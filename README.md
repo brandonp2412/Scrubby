@@ -20,7 +20,7 @@ The app authenticates with Home Assistant's WebSocket API, discovers every `vacu
 - `vacuum.return_to_base`
 - `vacuum.locate`
 
-The rooms, illustrated map, and schedules are interactive product surfaces with demo/local state. Vacuum vendors expose segmented cleaning and maps differently, so connecting these surfaces to production data should be done through vendor-specific Home Assistant entities, scripts, or automations. The integration boundary lives in `lib/core/home_assistant.dart`.
+Naming a room on the map reuses or creates a Home Assistant Area through the Area Registry WebSocket API. Creating Areas requires an administrator access token. Home Assistant does not store map coordinates for Areas, so pin positions remain session-local and removing a pin does not delete the Area or disturb its assigned entities. Vacuum vendors expose segmented cleaning differently, so room-targeted cleaning still requires vendor-specific entities, scripts, or automations. The integration boundary lives in `lib/core/home_assistant.dart`.
 
 For Flutter web, Home Assistant must allow the app's origin in `http.cors_allowed_origins`. Mobile builds support both local HTTP Home Assistant instances and remote HTTPS instances.
 
