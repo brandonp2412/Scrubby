@@ -19,12 +19,20 @@ import 'package:scrubby/main.dart';
 import 'package:scrubby/core/app_state.dart';
 import 'package:scrubby/core/home_assistant.dart';
 import 'package:scrubby/screens/dashboard_shell.dart';
+import 'package:scrubby/screens/map_page.dart';
+import 'package:scrubby/screens/rooms_page.dart';
 
 void main() {
+  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+
   testWidgets('shows Home Assistant connection screen', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const ScrubbyApp());
+    expect(find.byKey(const ValueKey('startup')), findsOneWidget);
+    expect(find.text('Connect your home'), findsNothing);
+
+    await tester.pumpAndSettle();
     expect(find.text('Connect your home'), findsOneWidget);
     expect(find.text('Explore with demo home'), findsOneWidget);
   });
@@ -35,6 +43,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const ScrubbyApp());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore with demo home'));
     await tester.pumpAndSettle();
 
@@ -188,6 +197,123 @@ void main() {
   });
 
   test(
+    'discovers HA vacuum segments and runs the Dreame room service',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      Map<String, dynamic>? servicePayload;
+      final apiClient = MockClient((request) async {
+        if (request.method == 'GET' && request.url.path == '/api/services') {
+          return http.Response(
+            jsonEncode([
+              {
+                'domain': 'dreame_vacuum',
+                'services': {
+                  'vacuum_clean_segment': {
+                    'fields': {'segments': {}},
+                  },
+                },
+              },
+            ]),
+            HttpStatus.ok,
+          );
+        }
+        expect(
+          request.url.path,
+          '/api/services/dreame_vacuum/vacuum_clean_segment',
+        );
+        servicePayload = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response('[]', HttpStatus.ok);
+      });
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.add(jsonEncode({'type': 'auth_required'}));
+        socket.listen((rawMessage) {
+          final message =
+              jsonDecode(rawMessage as String) as Map<String, dynamic>;
+          switch (message['type']) {
+            case 'auth':
+              socket.add(jsonEncode({'type': 'auth_ok'}));
+            case 'get_config':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': {'location_name': 'Test Home'},
+                }),
+              );
+            case 'get_states':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': [
+                    {
+                      'entity_id': 'vacuum.dreame',
+                      'state': 'docked',
+                      'attributes': {
+                        'friendly_name': 'Dreame',
+                        'supported_features': 16384,
+                      },
+                    },
+                  ],
+                }),
+              );
+            case 'subscribe_events':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': null,
+                }),
+              );
+            case 'vacuum/get_segments':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': {
+                    'segments': [
+                      {'id': '1_3', 'name': 'Room 1', 'group': 'Ground floor'},
+                      {'id': '1_2', 'name': 'Room 2', 'group': 'Ground floor'},
+                    ],
+                  },
+                }),
+              );
+          }
+        });
+      });
+
+      final client = HomeAssistantClient(
+        'http://${server.address.address}:${server.port}',
+        'test-token',
+        httpClient: apiClient,
+      );
+      addTearDown(client.close);
+      await client.connect();
+
+      final vacuum = (await client.fetchVacuums()).single;
+      expect(vacuum.supportsAreaCleaning, isTrue);
+      final segments = await client.fetchVacuumSegments(vacuum.entityId);
+      expect(segments.map((segment) => segment.name), ['Room 1', 'Room 2']);
+
+      await client.cleanVacuumSegments(
+        vacuum.entityId,
+        segments.map((segment) => segment.id).toList(),
+      );
+
+      expect(servicePayload, {
+        'entity_id': 'vacuum.dreame',
+        'segments': [3, 2],
+      });
+    },
+  );
+
+  test(
     'receives live vacuum state over the Home Assistant WebSocket API',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -334,6 +460,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(800, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const ScrubbyApp());
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Explore with demo home'));
     await tester.pumpAndSettle();
     await tester.binding.setSurfaceSize(const Size(390, 844));
@@ -368,6 +495,68 @@ void main() {
     expect(balanced.softWrap, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    're-labelling a mapped room replaces its name on manual controls',
+    (WidgetTester tester) async {
+      final state = AppState(secureStorage: const _FakeSecureStorage())
+        ..startDemo();
+      final originalCount = state.mapRoomLabels.length;
+      final kitchen = state.mapRoomLabels.first;
+
+      await state.addMapRoomLabel('Galley', kitchen.x + .01, kitchen.y + .01);
+
+      expect(state.mapRoomLabels, hasLength(originalCount));
+      expect(state.mapRoomLabels.first.name, 'Galley');
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: RoomsPage(state: state)),
+        ),
+      );
+
+      expect(find.text('Galley'), findsOneWidget);
+      expect(find.text('Kitchen'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'saving a map room label keeps its controller alive through dismissal',
+    (WidgetTester tester) async {
+      final state = AppState(secureStorage: const _FakeSecureStorage())
+        ..startDemo();
+      state.mapRoomLabels.clear();
+      state.vacuums = [
+        VacuumEntity(
+          entityId: state.vacuums[0].entityId,
+          name: state.vacuums[0].name,
+          state: state.vacuums[0].state,
+          battery: state.vacuums[0].battery,
+          mapImage: base64Decode(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+          ),
+        ),
+      ];
+      await tester.binding.setSurfaceSize(const Size(800, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: MapPage(state: state)),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Label a room'));
+      await tester.pump();
+      await tester.tap(find.text('Tap inside a room to label it'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Kitchen');
+      await tester.tap(find.text('Add label'));
+      await tester.pumpAndSettle();
+
+      expect(state.mapRoomLabels.single.name, 'Kitchen');
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('asks for confirmation before logging out', (
     WidgetTester tester,

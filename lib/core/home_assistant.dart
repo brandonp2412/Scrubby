@@ -14,6 +14,7 @@ class VacuumEntity {
     this.fanSpeed,
     this.fanSpeeds = const [],
     this.mapImage,
+    this.supportedFeatures = 0,
   });
 
   final String entityId;
@@ -23,10 +24,12 @@ class VacuumEntity {
   final String? fanSpeed;
   final List<String> fanSpeeds;
   final Uint8List? mapImage;
+  final int supportedFeatures;
 
   bool get isCleaning => state == 'cleaning';
   bool get isPaused => state == 'paused';
   bool get isDocked => state == 'docked' || state == 'idle';
+  bool get supportsAreaCleaning => supportedFeatures & 16384 != 0;
 
   VacuumEntity copyWith({String? state, int? battery, String? fanSpeed}) {
     return VacuumEntity(
@@ -37,6 +40,7 @@ class VacuumEntity {
       fanSpeed: fanSpeed ?? this.fanSpeed,
       fanSpeeds: fanSpeeds,
       mapImage: mapImage,
+      supportedFeatures: supportedFeatures,
     );
   }
 
@@ -51,8 +55,26 @@ class VacuumEntity {
       fanSpeeds: (attributes['fan_speed_list'] as List<dynamic>? ?? const [])
           .map((value) => value.toString())
           .toList(growable: false),
+      supportedFeatures:
+          (attributes['supported_features'] as num?)?.toInt() ?? 0,
     );
   }
+}
+
+class VacuumSegment {
+  const VacuumSegment({required this.id, required this.name, this.group});
+
+  final String id;
+  final String name;
+  final String? group;
+
+  factory VacuumSegment.fromJson(Map<String, dynamic> json) => VacuumSegment(
+    id: json['id'].toString(),
+    name: json['name']?.toString().trim().isNotEmpty == true
+        ? json['name'].toString()
+        : 'Room ${json['id']}',
+    group: json['group']?.toString(),
+  );
 }
 
 class HomeAssistantSchedule {
@@ -129,12 +151,14 @@ class HomeAssistantClient {
   final Map<String, String> _mapEntityIds = {};
   final Map<String, Timer> _mapRefreshTimers = {};
   final Map<String, int> _mapRefreshVersions = {};
+  final Map<int, Completer<Object?>> _pendingCommands = {};
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _socketSubscription;
   Timer? _reconnectTimer;
   bool _closed = false;
   bool _isConnecting = false;
   int _connectionGeneration = 0;
+  int _nextCommandId = 4;
   String _locationName = 'Home';
 
   Stream<List<VacuumEntity>> get vacuumUpdates => _vacuumUpdates.stream;
@@ -179,6 +203,7 @@ class HomeAssistantClient {
         fanSpeed: vacuum.fanSpeed,
         fanSpeeds: vacuum.fanSpeeds,
         mapImage: mapImage,
+        supportedFeatures: vacuum.supportedFeatures,
       );
       vacuums.add(vacuum);
     }
@@ -239,6 +264,25 @@ class HomeAssistantClient {
                   );
                 }
               case 'result':
+                final commandId = data['id'] as int?;
+                final pending = commandId == null
+                    ? null
+                    : _pendingCommands.remove(commandId);
+                if (pending != null) {
+                  if (data['success'] == true) {
+                    pending.complete(data['result']);
+                  } else {
+                    final error =
+                        data['error'] as Map<String, dynamic>? ?? const {};
+                    pending.completeError(
+                      Exception(
+                        error['message']?.toString() ??
+                            'Home Assistant rejected the request.',
+                      ),
+                    );
+                  }
+                  return;
+                }
                 if (data['success'] != true) {
                   if (!ready.isCompleted) {
                     ready.completeError(
@@ -350,6 +394,7 @@ class HomeAssistantClient {
             fanSpeed: parsed.fanSpeed,
             fanSpeeds: parsed.fanSpeeds,
             mapImage: _mapImages[parsed.entityId],
+            supportedFeatures: parsed.supportedFeatures,
           );
         })
         .toList(growable: false);
@@ -410,6 +455,9 @@ class HomeAssistantClient {
 
   void _handleDisconnect(int generation) {
     if (_closed || generation != _connectionGeneration) return;
+    _failPendingCommands(
+      Exception('The Home Assistant connection was interrupted.'),
+    );
     _scheduleReconnect();
   }
 
@@ -429,10 +477,48 @@ class HomeAssistantClient {
       timer.cancel();
     }
     _mapRefreshTimers.clear();
+    _failPendingCommands(Exception('The Home Assistant connection closed.'));
     await _socketSubscription?.cancel();
     await _channel?.sink.close();
     await _vacuumUpdates.close();
     if (_ownsHttpClient) _httpClient.close();
+  }
+
+  void _failPendingCommands(Object error) {
+    final pending = _pendingCommands.values.toList(growable: false);
+    _pendingCommands.clear();
+    for (final command in pending) {
+      command.completeError(error);
+    }
+  }
+
+  Future<Object?> _sendSocketCommand(Map<String, Object?> command) async {
+    final channel = _channel;
+    if (_closed || channel == null) {
+      throw Exception('Home Assistant is not connected.');
+    }
+    final id = _nextCommandId++;
+    final completer = Completer<Object?>();
+    _pendingCommands[id] = completer;
+    try {
+      channel.sink.add(jsonEncode({'id': id, ...command}));
+      return await completer.future.timeout(const Duration(seconds: 12));
+    } finally {
+      _pendingCommands.remove(id);
+    }
+  }
+
+  Future<List<VacuumSegment>> fetchVacuumSegments(String entityId) async {
+    final result = await _sendSocketCommand({
+      'type': 'vacuum/get_segments',
+      'entity_id': entityId,
+    });
+    final data = result as Map<String, dynamic>? ?? const {};
+    final segments = data['segments'] as List<dynamic>? ?? const [];
+    return segments
+        .whereType<Map<String, dynamic>>()
+        .map(VacuumSegment.fromJson)
+        .toList(growable: false);
   }
 
   int? _findBattery(
@@ -543,6 +629,117 @@ class HomeAssistantClient {
     Map<String, Object?> data = const {},
   }) async {
     await callService('vacuum', service, entityId: entityId, data: data);
+  }
+
+  Future<void> cleanVacuumSegments(
+    String entityId,
+    List<String> segmentIds,
+  ) async {
+    if (segmentIds.isEmpty) {
+      throw const FormatException('Choose at least one room.');
+    }
+    final response = await _httpClient
+        .get(Uri.parse('$baseUrl/api/services'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    _requireSuccess(response, 'discover room-cleaning services');
+    final domains = jsonDecode(response.body) as List<dynamic>;
+    final candidates = <({String domain, String service, String field})>[];
+    for (final domainData in domains.whereType<Map<String, dynamic>>()) {
+      final domain = domainData['domain']?.toString() ?? '';
+      final services =
+          domainData['services'] as Map<String, dynamic>? ?? const {};
+      for (final entry in services.entries) {
+        final service = entry.key;
+        if (!service.toLowerCase().contains('clean_segment')) continue;
+        final definition = entry.value as Map<String, dynamic>? ?? const {};
+        final fields =
+            definition['fields'] as Map<String, dynamic>? ?? const {};
+        final field = const [
+          'segment_ids',
+          'segments',
+          'segment_id',
+        ].where(fields.containsKey).firstOrNull;
+        if (field != null) {
+          candidates.add((domain: domain, service: service, field: field));
+        }
+      }
+    }
+    candidates.sort((a, b) {
+      int score(({String domain, String service, String field}) item) {
+        if (item.domain == 'dreame_vacuum') return 0;
+        if (item.domain == 'vacuum') return 1;
+        return 2;
+      }
+
+      return score(a).compareTo(score(b));
+    });
+
+    final rawIds = segmentIds
+        .map((id) {
+          final raw = id.contains('_') ? id.split('_').last : id;
+          return int.tryParse(raw) ?? raw;
+        })
+        .toList(growable: false);
+    Object? lastError;
+    for (final candidate in candidates) {
+      final ids = candidate.field == 'segment_ids' ? segmentIds : rawIds;
+      try {
+        await callService(
+          candidate.domain,
+          candidate.service,
+          entityId: entityId,
+          data: {candidate.field: ids},
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    try {
+      final areaIds = await _mappedAreaIds(entityId, segmentIds);
+      if (areaIds.isNotEmpty) {
+        await callVacuumService(
+          'clean_area',
+          entityId,
+          data: {'cleaning_area_id': areaIds},
+        );
+        return;
+      }
+    } catch (error) {
+      lastError ??= error;
+    }
+    if (lastError != null) throw lastError;
+    throw Exception(
+      'This vacuum reports rooms, but Home Assistant exposes neither a direct segment-cleaning service nor an existing segment-to-area mapping.',
+    );
+  }
+
+  Future<List<String>> _mappedAreaIds(
+    String entityId,
+    List<String> segmentIds,
+  ) async {
+    final result = await _sendSocketCommand({
+      'type': 'config/entity_registry/get',
+      'entity_id': entityId,
+    });
+    final entry = result as Map<String, dynamic>? ?? const {};
+    final options = entry['options'] as Map<String, dynamic>? ?? const {};
+    final vacuumOptions =
+        options['vacuum'] as Map<String, dynamic>? ?? const {};
+    final mapping =
+        vacuumOptions['area_mapping'] as Map<String, dynamic>? ?? const {};
+    final requested = segmentIds.toSet();
+    final matchedSegments = <String>{};
+    final areaIds = <String>[];
+    for (final entry in mapping.entries) {
+      final mapped = (entry.value as List<dynamic>? ?? const [])
+          .map((value) => value.toString())
+          .toSet();
+      if (mapped.intersection(requested).isEmpty) continue;
+      areaIds.add(entry.key);
+      matchedSegments.addAll(mapped.intersection(requested));
+    }
+    return matchedSegments.containsAll(requested) ? areaIds : const [];
   }
 
   Future<void> callService(

@@ -20,7 +20,7 @@ The app authenticates with Home Assistant's WebSocket API, discovers every `vacu
 - `vacuum.return_to_base`
 - `vacuum.locate`
 
-Naming a room on the map reuses or creates a Home Assistant Area through the Area Registry WebSocket API. Creating Areas requires an administrator access token. Home Assistant does not store map coordinates for Areas, so pin positions remain session-local and removing a pin does not delete the Area or disturb its assigned entities. Vacuum vendors expose segmented cleaning differently, so room-targeted cleaning still requires vendor-specific entities, scripts, or automations. The integration boundary lives in `lib/core/home_assistant.dart`.
+Room labels are Scrubby map metadata stored securely on the device and scoped to each vacuum. They do not create Home Assistant Areas. For vacuums supporting Home Assistant's `CLEAN_AREA` capability, Scrubby discovers real rooms with `vacuum/get_segments`, binds each label to a segment ID, and discovers the installed integration's segment-cleaning service when a manual clean starts. This supports Dreame's `dreame_vacuum.vacuum_clean_segment` service and the equivalent `clean_segment` service shapes used by other integrations. Scrubby never substitutes a whole-home `vacuum.start` call when room cleaning is unavailable. Map images do not contain standard room geometry, so the labelling dialog asks which reported vacuum room is under the tapped point. The integration boundary lives in `lib/core/home_assistant.dart`.
 
 For Flutter web, Home Assistant must allow the app's origin in `http.cors_allowed_origins`. Mobile builds support both local HTTP Home Assistant instances and remote HTTPS instances.
 

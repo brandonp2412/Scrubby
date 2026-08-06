@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 
@@ -39,44 +40,59 @@ class _MapPageState extends State<MapPage> {
   }
 
   Future<void> _addLabel(TapUpDetails details, Size size) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
+    final scenePosition = _transformation.toScene(details.localPosition);
+    final result = await showDialog<_RoomLabelResult>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Label this room'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(hintText: 'e.g. Kitchen'),
-          onSubmitted: (value) {
-            final name = value.trim();
-            if (name.isNotEmpty) Navigator.pop(context, name);
-          },
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = controller.text.trim();
-              if (name.isNotEmpty) Navigator.pop(context, name);
-            },
-            child: const Text('Add label'),
-          ),
-        ],
+      builder: (context) => _RoomLabelDialog(
+        segments: widget.state.vacuumSegments,
+        unavailableSegmentIds: widget.state.mapRoomLabels
+            .map((label) => label.segmentId)
+            .nonNulls
+            .toSet(),
       ),
     );
-    controller.dispose();
-    if (name == null || !mounted) return;
-    widget.state.addMapRoomLabel(
-      name,
-      (details.localPosition.dx / size.width).clamp(0.05, 0.95),
-      (details.localPosition.dy / size.height).clamp(0.05, 0.95),
+    if (result == null || !mounted) return;
+    try {
+      await widget.state.addMapRoomLabel(
+        result.name,
+        (scenePosition.dx / size.width).clamp(0.05, 0.95),
+        (scenePosition.dy / size.height).clamp(0.05, 0.95),
+        segmentId: result.segmentId,
+      );
+      if (mounted) setState(() => _labelMode = false);
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst(
+        RegExp(r'^(Exception|FormatException):\s*'),
+        '',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save the room label: $message')),
+      );
+    }
+  }
+
+  Future<void> _renameLabel(MapRoomLabel label) async {
+    final result = await showDialog<_RoomLabelResult>(
+      context: context,
+      builder: (context) => _RoomLabelDialog(
+        initialName: label.name,
+        initialSegmentId: label.segmentId,
+        segments: widget.state.vacuumSegments,
+        unavailableSegmentIds: widget.state.mapRoomLabels
+            .where((item) => item.id != label.id)
+            .map((item) => item.segmentId)
+            .nonNulls
+            .toSet(),
+      ),
     );
-    setState(() => _labelMode = false);
+    if (result == null || !mounted) return;
+    await widget.state.addMapRoomLabel(
+      result.name,
+      label.x,
+      label.y,
+      segmentId: result.segmentId,
+    );
   }
 
   @override
@@ -117,32 +133,49 @@ class _MapPageState extends State<MapPage> {
                                 transformationController: _transformation,
                                 minScale: 1,
                                 maxScale: 5,
-                                child: Center(
-                                  child: Image.memory(
-                                    map,
-                                    fit: BoxFit.contain,
-                                    filterQuality: FilterQuality.high,
-                                    gaplessPlayback: true,
+                                child: SizedBox.fromSize(
+                                  size: size,
+                                  child: Stack(
+                                    children: [
+                                      Positioned.fill(
+                                        child: Image.memory(
+                                          map,
+                                          fit: BoxFit.contain,
+                                          filterQuality: FilterQuality.high,
+                                          gaplessPlayback: true,
+                                        ),
+                                      ),
+                                      for (final label
+                                          in widget.state.mapRoomLabels)
+                                        Positioned(
+                                          left: label.x * size.width,
+                                          top: label.y * size.height,
+                                          child: FractionalTranslation(
+                                            translation: const Offset(
+                                              -0.5,
+                                              -0.5,
+                                            ),
+                                            child: InputChip(
+                                              label: Text(label.name),
+                                              tooltip: 'Rename ${label.name}',
+                                              onPressed: () =>
+                                                  _renameLabel(label),
+                                              onDeleted: () => widget.state
+                                                  .removeMapRoomLabel(label),
+                                              deleteIcon: const Icon(
+                                                Icons.close,
+                                                size: 16,
+                                              ),
+                                              backgroundColor: Colors.white,
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                           ),
-                          for (final label in widget.state.mapRoomLabels)
-                            Positioned(
-                              left: label.x * size.width,
-                              top: label.y * size.height,
-                              child: FractionalTranslation(
-                                translation: const Offset(-0.5, -0.5),
-                                child: InputChip(
-                                  label: Text(label.name),
-                                  onDeleted: () =>
-                                      widget.state.removeMapRoomLabel(label),
-                                  deleteIcon: const Icon(Icons.close, size: 16),
-                                  backgroundColor: Colors.white,
-                                ),
-                              ),
-                            ),
                           if (_labelMode)
                             Positioned.fill(
                               child: GestureDetector(
@@ -232,6 +265,103 @@ class _MapPageState extends State<MapPage> {
   }
 }
 
+class _RoomLabelDialog extends StatefulWidget {
+  const _RoomLabelDialog({
+    required this.segments,
+    required this.unavailableSegmentIds,
+    this.initialName,
+    this.initialSegmentId,
+  });
+
+  final String? initialName;
+  final String? initialSegmentId;
+  final List<VacuumSegment> segments;
+  final Set<String> unavailableSegmentIds;
+
+  @override
+  State<_RoomLabelDialog> createState() => _RoomLabelDialogState();
+}
+
+class _RoomLabelDialogState extends State<_RoomLabelDialog> {
+  late final _controller = TextEditingController(text: widget.initialName);
+  late String? _segmentId =
+      widget.initialSegmentId ??
+      widget.segments
+          .where(
+            (segment) => !widget.unavailableSegmentIds.contains(segment.id),
+          )
+          .firstOrNull
+          ?.id;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isNotEmpty && (widget.segments.isEmpty || _segmentId != null)) {
+      Navigator.pop(
+        context,
+        _RoomLabelResult(name: name, segmentId: _segmentId),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.initialName == null ? 'Label this room' : 'Rename room'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.segments.isNotEmpty) ...[
+          DropdownButtonFormField<String>(
+            initialValue: _segmentId,
+            decoration: const InputDecoration(labelText: 'Vacuum room'),
+            items: [
+              for (final segment in widget.segments)
+                DropdownMenuItem(
+                  value: segment.id,
+                  enabled:
+                      segment.id == widget.initialSegmentId ||
+                      !widget.unavailableSegmentIds.contains(segment.id),
+                  child: Text(segment.name),
+                ),
+            ],
+            onChanged: (value) => setState(() => _segmentId = value),
+          ),
+          const SizedBox(height: 14),
+        ],
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Display name'),
+          onSubmitted: (_) => _submit(),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _submit,
+        child: Text(widget.initialName == null ? 'Add label' : 'Save name'),
+      ),
+    ],
+  );
+}
+
+class _RoomLabelResult {
+  const _RoomLabelResult({required this.name, required this.segmentId});
+
+  final String name;
+  final String? segmentId;
+}
+
 class _FullscreenMap extends StatefulWidget {
   const _FullscreenMap({required this.map, required this.state});
   final Uint8List map;
@@ -268,28 +398,36 @@ class _FullscreenMapState extends State<_FullscreenMap> {
                 transformationController: _transformation,
                 minScale: 1,
                 maxScale: 5,
-                child: Center(
-                  child: Image.memory(
-                    widget.map,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
-                    gaplessPlayback: true,
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Image.memory(
+                          widget.map,
+                          fit: BoxFit.contain,
+                          filterQuality: FilterQuality.high,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                      for (final label in widget.state.mapRoomLabels)
+                        Positioned(
+                          left: label.x * constraints.maxWidth,
+                          top: label.y * constraints.maxHeight,
+                          child: FractionalTranslation(
+                            translation: const Offset(-0.5, -0.5),
+                            child: Chip(
+                              label: Text(label.name),
+                              backgroundColor: Colors.white,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ),
             ),
-            for (final label in widget.state.mapRoomLabels)
-              Positioned(
-                left: label.x * constraints.maxWidth,
-                top: label.y * constraints.maxHeight,
-                child: FractionalTranslation(
-                  translation: const Offset(-0.5, -0.5),
-                  child: Chip(
-                    label: Text(label.name),
-                    backgroundColor: Colors.white,
-                  ),
-                ),
-              ),
             Positioned(
               top: MediaQuery.paddingOf(context).top + 12,
               left: 16,

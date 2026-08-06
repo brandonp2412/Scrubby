@@ -13,18 +13,46 @@ class RoomsPage extends StatefulWidget {
 }
 
 class _RoomsPageState extends State<RoomsPage> {
-  final selected = <String>{'Kitchen', 'Living room'};
+  final selected = <String>{};
   String mode = 'Balanced';
 
-  static const rooms = [
-    ('Kitchen', Icons.countertops_outlined, Color(0xFFD9F1E3), '18 m²'),
-    ('Living room', Icons.weekend_outlined, Color(0xFFFFE6BE), '26 m²'),
-    ('Bedroom', Icons.bed_outlined, Color(0xFFDDE5FF), '16 m²'),
-    ('Hallway', Icons.meeting_room_outlined, Color(0xFFFFDBD1), '8 m²'),
+  static const _icons = [
+    Icons.countertops_outlined,
+    Icons.weekend_outlined,
+    Icons.bed_outlined,
+    Icons.meeting_room_outlined,
+  ];
+  static const _colors = [
+    Color(0xFFD9F1E3),
+    Color(0xFFFFE6BE),
+    Color(0xFFDDE5FF),
+    Color(0xFFFFDBD1),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final labelsBySegment = {
+      for (final label in widget.state.mapRoomLabels)
+        if (label.segmentId != null) label.segmentId!: label,
+    };
+    final rooms = <_RoomChoice>[
+      for (final segment in widget.state.vacuumSegments)
+        _RoomChoice(
+          id: segment.id,
+          name: labelsBySegment[segment.id]?.name ?? segment.name,
+          segmentId: segment.id,
+          isLabelled: labelsBySegment.containsKey(segment.id),
+        ),
+      for (final label in widget.state.mapRoomLabels)
+        if (label.segmentId == null)
+          _RoomChoice(
+            id: 'label:${label.id}',
+            name: label.name,
+            isLabelled: true,
+          ),
+    ];
+    final roomIds = rooms.map((room) => room.id).toSet();
+    final activeSelection = selected.intersection(roomIds);
     return PageFrame(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -34,35 +62,42 @@ class _RoomsPageState extends State<RoomsPage> {
             subtitle: 'Send your vacuum exactly where it’s needed.',
           ),
           const SizedBox(height: 24),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final columns = constraints.maxWidth > 700 ? 2 : 1;
-              final width =
-                  (constraints.maxWidth - (columns - 1) * 14) / columns;
-              return Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: [
-                  for (final room in rooms)
-                    SizedBox(
-                      width: width,
-                      child: _RoomCard(
-                        name: room.$1,
-                        icon: room.$2,
-                        color: room.$3,
-                        area: room.$4,
-                        selected: selected.contains(room.$1),
-                        onTap: () => setState(
-                          () => selected.contains(room.$1)
-                              ? selected.remove(room.$1)
-                              : selected.add(room.$1),
+          if (rooms.isEmpty)
+            _NoRoomsCard(error: widget.state.roomCapabilityError)
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth > 700 ? 2 : 1;
+                final width =
+                    (constraints.maxWidth - (columns - 1) * 14) / columns;
+                return Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: [
+                    for (var index = 0; index < rooms.length; index++)
+                      SizedBox(
+                        width: width,
+                        child: _RoomCard(
+                          name: rooms[index].name,
+                          icon: _icons[index % _icons.length],
+                          color: _colors[index % _colors.length],
+                          selected: activeSelection.contains(rooms[index].id),
+                          linked: rooms[index].segmentId != null,
+                          labelled: rooms[index].isLabelled,
+                          onTap: rooms[index].segmentId == null
+                              ? null
+                              : () => setState(() {
+                                  final id = rooms[index].id;
+                                  selected.contains(id)
+                                      ? selected.remove(id)
+                                      : selected.add(id);
+                                }),
                         ),
                       ),
-                    ),
-                ],
-              );
-            },
-          ),
+                  ],
+                );
+              },
+            ),
           const SizedBox(height: 24),
           SurfaceCard(
             child: Column(
@@ -124,7 +159,9 @@ class _RoomsPageState extends State<RoomsPage> {
             width: double.infinity,
             height: 58,
             child: FilledButton.icon(
-              onPressed: selected.isEmpty ? null : _start,
+              onPressed: activeSelection.isEmpty
+                  ? null
+                  : () => _start(activeSelection, rooms),
               style: FilledButton.styleFrom(
                 backgroundColor: fern,
                 shape: RoundedRectangleBorder(
@@ -133,9 +170,9 @@ class _RoomsPageState extends State<RoomsPage> {
               ),
               icon: const Icon(Icons.play_arrow_rounded),
               label: Text(
-                selected.isEmpty
+                activeSelection.isEmpty
                     ? 'Choose at least one room'
-                    : 'Clean ${selected.length} ${selected.length == 1 ? 'room' : 'rooms'}',
+                    : 'Clean ${activeSelection.length} ${activeSelection.length == 1 ? 'room' : 'rooms'}',
               ),
             ),
           ),
@@ -144,14 +181,22 @@ class _RoomsPageState extends State<RoomsPage> {
     );
   }
 
-  Future<void> _start() async {
+  Future<void> _start(Set<String> selectedIds, List<_RoomChoice> rooms) async {
+    final selectedRooms = rooms
+        .where((room) => selectedIds.contains(room.id))
+        .toList(growable: false);
+    final roomNames = selectedRooms
+        .map((room) => room.name)
+        .toList(growable: false);
     try {
-      await widget.state.toggleCleaning();
+      await widget.state.cleanRooms(
+        selectedRooms.map((room) => room.segmentId!).toList(growable: false),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${widget.state.vacuum.name} is heading to ${selected.join(', ')}.',
+              '${widget.state.vacuum.name} is heading to ${roomNames.join(', ')}.',
             ),
           ),
         );
@@ -171,16 +216,18 @@ class _RoomCard extends StatelessWidget {
     required this.name,
     required this.icon,
     required this.color,
-    required this.area,
     required this.selected,
+    required this.linked,
+    required this.labelled,
     required this.onTap,
   });
   final String name;
   final IconData icon;
   final Color color;
-  final String area;
   final bool selected;
-  final VoidCallback onTap;
+  final bool linked;
+  final bool labelled;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -217,7 +264,14 @@ class _RoomCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: Theme.of(context).textTheme.titleLarge),
-                    Text(area, style: Theme.of(context).textTheme.bodyMedium),
+                    Text(
+                      linked
+                          ? labelled
+                                ? 'Mapped room'
+                                : 'Vacuum room · label it on the map'
+                          : 'Not linked to a vacuum room',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                   ],
                 ),
               ),
@@ -246,4 +300,44 @@ class _RoomCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _NoRoomsCard extends StatelessWidget {
+  const _NoRoomsCard({this.error});
+
+  final String? error;
+
+  @override
+  Widget build(BuildContext context) => SurfaceCard(
+    child: Row(
+      children: [
+        const CircleAvatar(
+          backgroundColor: mint,
+          child: Icon(Icons.label_outline_rounded, color: fern),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            error ??
+                'Home Assistant did not report any cleanable rooms for this vacuum.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _RoomChoice {
+  const _RoomChoice({
+    required this.id,
+    required this.name,
+    required this.isLabelled,
+    this.segmentId,
+  });
+
+  final String id;
+  final String name;
+  final String? segmentId;
+  final bool isLabelled;
 }

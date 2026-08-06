@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -54,11 +55,48 @@ class CleaningSchedule {
 }
 
 class MapRoomLabel {
-  const MapRoomLabel({required this.name, required this.x, required this.y});
+  const MapRoomLabel({
+    required this.id,
+    required this.name,
+    required this.x,
+    required this.y,
+    this.segmentId,
+  });
 
+  final String id;
   final String name;
   final double x;
   final double y;
+  final String? segmentId;
+
+  MapRoomLabel copyWith({
+    String? name,
+    double? x,
+    double? y,
+    String? segmentId,
+  }) => MapRoomLabel(
+    id: id,
+    name: name ?? this.name,
+    x: x ?? this.x,
+    y: y ?? this.y,
+    segmentId: segmentId ?? this.segmentId,
+  );
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'x': x,
+    'y': y,
+    'segment_id': segmentId,
+  };
+
+  factory MapRoomLabel.fromJson(Map<String, dynamic> json) => MapRoomLabel(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    x: (json['x'] as num).toDouble(),
+    y: (json['y'] as num).toDouble(),
+    segmentId: json['segment_id']?.toString(),
+  );
 }
 
 class AppState extends ChangeNotifier {
@@ -67,6 +105,7 @@ class AppState extends ChangeNotifier {
 
   static const _urlKey = 'home_assistant_url';
   static const _tokenKey = 'home_assistant_token';
+  static const _roomLabelsKey = 'map_room_labels';
   final FlutterSecureStorage _secureStorage;
   HomeAssistantClient? _client;
   StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
@@ -79,6 +118,8 @@ class AppState extends ChangeNotifier {
   String? savedUrl;
   String? restoreError;
   final Map<String, List<MapRoomLabel>> _mapRoomLabels = {};
+  final Map<String, List<VacuumSegment>> _vacuumSegments = {};
+  String? roomCapabilityError;
 
   final List<CleaningSchedule> schedules = [];
   bool schedulesLoading = false;
@@ -88,12 +129,15 @@ class AppState extends ChangeNotifier {
   VacuumEntity get vacuum => vacuums[selectedVacuum];
   List<MapRoomLabel> get mapRoomLabels =>
       _mapRoomLabels.putIfAbsent(vacuum.entityId, () => []);
+  List<VacuumSegment> get vacuumSegments =>
+      _vacuumSegments[vacuum.entityId] ?? const [];
 
   Future<void> initialize() async {
     try {
       final credentials = await _secureStorage.readAll();
       savedUrl = credentials[_urlKey];
       final token = credentials[_tokenKey];
+      _restoreRoomLabels(credentials[_roomLabelsKey]);
       if (savedUrl != null && token != null) {
         await login(savedUrl!, token, persist: false);
       }
@@ -128,6 +172,7 @@ class AppState extends ChangeNotifier {
       isDemo = false;
       savedUrl = client.baseUrl;
       restoreError = null;
+      await _loadVacuumSegments();
       notifyListeners();
       await refreshSchedules();
     } catch (_) {
@@ -174,6 +219,42 @@ class AppState extends ChangeNotifier {
     ];
     schedules.clear();
     scheduleError = null;
+    _mapRoomLabels[vacuum.entityId] = [
+      MapRoomLabel(
+        id: 'demo-kitchen',
+        name: 'Kitchen',
+        x: .32,
+        y: .32,
+        segmentId: '1',
+      ),
+      MapRoomLabel(
+        id: 'demo-living-room',
+        name: 'Living room',
+        x: .67,
+        y: .35,
+        segmentId: '2',
+      ),
+      MapRoomLabel(
+        id: 'demo-bedroom',
+        name: 'Bedroom',
+        x: .33,
+        y: .68,
+        segmentId: '3',
+      ),
+      MapRoomLabel(
+        id: 'demo-hallway',
+        name: 'Hallway',
+        x: .64,
+        y: .68,
+        segmentId: '4',
+      ),
+    ];
+    _vacuumSegments[vacuum.entityId] = const [
+      VacuumSegment(id: '1', name: 'Room 1'),
+      VacuumSegment(id: '2', name: 'Room 2'),
+      VacuumSegment(id: '3', name: 'Room 3'),
+      VacuumSegment(id: '4', name: 'Room 4'),
+    ];
     notifyListeners();
   }
 
@@ -210,14 +291,123 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void addMapRoomLabel(String name, double x, double y) {
-    mapRoomLabels.add(MapRoomLabel(name: name, x: x, y: y));
+  Future<void> addMapRoomLabel(
+    String name,
+    double x,
+    double y, {
+    String? segmentId,
+  }) async {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw const FormatException('A room name is required.');
+    }
+    final nearbyIndex = mapRoomLabels.indexWhere((label) {
+      if (segmentId != null && label.segmentId == segmentId) return true;
+      final dx = label.x - x;
+      final dy = label.y - y;
+      return dx * dx + dy * dy < .012;
+    });
+    if (nearbyIndex >= 0) {
+      mapRoomLabels[nearbyIndex] = mapRoomLabels[nearbyIndex].copyWith(
+        name: normalizedName,
+        x: x,
+        y: y,
+        segmentId: segmentId,
+      );
+    } else {
+      mapRoomLabels.add(
+        MapRoomLabel(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          name: normalizedName,
+          x: x,
+          y: y,
+          segmentId: segmentId,
+        ),
+      );
+    }
+    await _persistRoomLabels();
     notifyListeners();
   }
 
-  void removeMapRoomLabel(MapRoomLabel label) {
-    mapRoomLabels.remove(label);
+  Future<void> renameMapRoomLabel(MapRoomLabel label, String name) async {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw const FormatException('A room name is required.');
+    }
+    final index = mapRoomLabels.indexWhere((item) => item.id == label.id);
+    if (index < 0) return;
+    mapRoomLabels[index] = mapRoomLabels[index].copyWith(name: normalizedName);
+    await _persistRoomLabels();
     notifyListeners();
+  }
+
+  Future<void> removeMapRoomLabel(MapRoomLabel label) async {
+    mapRoomLabels.removeWhere((item) => item.id == label.id);
+    await _persistRoomLabels();
+    notifyListeners();
+  }
+
+  void _restoreRoomLabels(String? encoded) {
+    if (encoded == null || encoded.isEmpty) return;
+    try {
+      final stored = jsonDecode(encoded) as Map<String, dynamic>;
+      for (final entry in stored.entries) {
+        final labels = entry.value as List<dynamic>;
+        _mapRoomLabels[entry.key] = labels
+            .whereType<Map<String, dynamic>>()
+            .map(MapRoomLabel.fromJson)
+            .toList();
+      }
+    } on Object {
+      // Ignore malformed data and allow the user to label the map again.
+    }
+  }
+
+  Future<void> _persistRoomLabels() async {
+    if (isDemo) return;
+    final encoded = jsonEncode(
+      _mapRoomLabels.map(
+        (vacuumId, labels) => MapEntry(
+          vacuumId,
+          labels.map((label) => label.toJson()).toList(growable: false),
+        ),
+      ),
+    );
+    await _secureStorage.write(key: _roomLabelsKey, value: encoded);
+  }
+
+  Future<void> _loadVacuumSegments() async {
+    roomCapabilityError = null;
+    _vacuumSegments.clear();
+    final client = _client;
+    if (client == null) return;
+    for (final item in vacuums.where((item) => item.supportsAreaCleaning)) {
+      try {
+        _vacuumSegments[item.entityId] = await client.fetchVacuumSegments(
+          item.entityId,
+        );
+      } catch (error) {
+        roomCapabilityError = _message(error);
+      }
+    }
+  }
+
+  Future<void> cleanRooms(List<String> segmentIds) async {
+    if (isBusy) return;
+    if (segmentIds.isEmpty) {
+      throw const FormatException('Choose at least one cleanable room.');
+    }
+    isBusy = true;
+    notifyListeners();
+    try {
+      if (!isDemo) {
+        await _client!.cleanVacuumSegments(vacuum.entityId, segmentIds);
+      }
+      vacuums[selectedVacuum] = vacuum.copyWith(state: 'cleaning');
+    } finally {
+      isBusy = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _runService(String service, String newState) async {
@@ -325,6 +515,7 @@ class AppState extends ChangeNotifier {
   Future<void> logout() async {
     await _secureStorage.delete(key: _urlKey);
     await _secureStorage.delete(key: _tokenKey);
+    await _secureStorage.delete(key: _roomLabelsKey);
     await _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
     await _client?.close();
@@ -332,6 +523,7 @@ class AppState extends ChangeNotifier {
     vacuums = [];
     selectedVacuum = 0;
     _mapRoomLabels.clear();
+    _vacuumSegments.clear();
     schedules.clear();
     scheduleError = null;
     savedUrl = null;
