@@ -196,86 +196,95 @@ class _ScheduleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SurfaceCard(
-      child: Row(
+      child: Column(
         children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              color: schedule.enabled ? ink : ink.withValues(alpha: .07),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  schedule.time,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                    color: schedule.enabled ? Colors.white : ink,
-                  ),
+          Row(
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: schedule.enabled ? ink : ink.withValues(alpha: .07),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                Text(
-                  'START',
-                  style: TextStyle(
-                    fontSize: 9,
-                    letterSpacing: 1,
-                    color: schedule.enabled
-                        ? Colors.white54
-                        : ink.withValues(alpha: .45),
-                  ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      schedule.time,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        color: schedule.enabled ? Colors.white : ink,
+                      ),
+                    ),
+                    Text(
+                      'START',
+                      style: TextStyle(
+                        fontSize: 9,
+                        letterSpacing: 1,
+                        color: schedule.enabled
+                            ? Colors.white54
+                            : ink.withValues(alpha: .45),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  schedule.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  schedule.days,
-                  style: const TextStyle(
-                    color: fern,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Whole home · $vacuumName',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ),
-          ),
-          if (busy)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: SizedBox.square(
-                dimension: 22,
-                child: CircularProgressIndicator(strokeWidth: 2.5),
               ),
-            )
-          else ...[
-            Switch(
-              value: schedule.enabled,
-              onChanged: onChanged,
-              activeThumbColor: fern,
-            ),
-            IconButton(
-              onPressed: onDelete,
-              tooltip: 'Delete schedule',
-              icon: const Icon(Icons.delete_outline_rounded),
-            ),
-          ],
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      schedule.title,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      schedule.days,
+                      style: const TextStyle(
+                        color: fern,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      'Whole home · $vacuumName',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              if (busy)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: SizedBox.square(
+                    dimension: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.5),
+                  ),
+                )
+              else ...[
+                Switch(
+                  value: schedule.enabled,
+                  onChanged: onChanged,
+                  activeThumbColor: fern,
+                ),
+                Spacer(),
+                IconButton(
+                  onPressed: onDelete,
+                  tooltip: 'Delete schedule',
+                  icon: const Icon(Icons.delete_outline_rounded),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
