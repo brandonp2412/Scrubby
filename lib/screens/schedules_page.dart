@@ -51,41 +51,6 @@ class SchedulesPage extends StatelessWidget {
               ),
               const SizedBox(height: 13),
             ],
-          const SizedBox(height: 12),
-          SurfaceCard(
-            color: mint.withValues(alpha: .58),
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  backgroundColor: fern,
-                  foregroundColor: mint,
-                  child: Icon(Icons.auto_awesome_rounded),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'A quieter kind of routine',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        state.isDemo
-                            ? 'Connect Home Assistant to create schedules that run while Scrubby is closed.'
-                            : 'Each schedule is an automation stored and executed by Home Assistant.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
