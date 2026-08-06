@@ -52,9 +52,34 @@ class _ScrubbyAppState extends State<ScrubbyApp> {
         listenable: state,
         builder: (context, _) => AnimatedSwitcher(
           duration: const Duration(milliseconds: 420),
-          child: state.vacuums.isEmpty
+          child: !state.isInitialized
+              ? const _StartupScreen(key: ValueKey('startup'))
+              : state.vacuums.isEmpty
               ? LoginScreen(key: const ValueKey('login'), state: state)
               : DashboardShell(key: const ValueKey('home'), state: state),
+        ),
+      ),
+    );
+  }
+}
+
+class _StartupScreen extends StatelessWidget {
+  const _StartupScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cleaning_services_rounded, size: 48, color: fern),
+            SizedBox(height: 24),
+            SizedBox.square(
+              dimension: 24,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+          ],
         ),
       ),
     );
