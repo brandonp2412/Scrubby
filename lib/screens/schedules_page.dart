@@ -16,7 +16,9 @@ class SchedulesPage extends StatelessWidget {
         children: [
           SectionHeader(
             title: 'Cleaning rhythm',
-            subtitle: 'Make clean floors the default, not another chore.',
+            subtitle: state.isDemo
+                ? 'Demo schedules stay in this session.'
+                : 'Schedules run in Home Assistant, even when Scrubby is closed.',
             trailing: FilledButton.icon(
               onPressed: () => _add(context),
               icon: const Icon(Icons.add_rounded),
@@ -24,13 +26,31 @@ class SchedulesPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 26),
-          for (var i = 0; i < state.schedules.length; i++) ...[
-            _ScheduleCard(
-              schedule: state.schedules[i],
-              onChanged: (value) => state.toggleSchedule(i, value),
+          if (state.scheduleError != null) ...[
+            _ScheduleError(
+              message: state.scheduleError!,
+              onRetry: state.refreshSchedules,
             ),
             const SizedBox(height: 13),
           ],
+          if (state.schedulesLoading && state.schedules.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (state.schedules.isEmpty)
+            const _EmptySchedules()
+          else
+            for (var i = 0; i < state.schedules.length; i++) ...[
+              _ScheduleCard(
+                schedule: state.schedules[i],
+                vacuumName: state.vacuumName(state.schedules[i].vacuumEntityId),
+                busy: state.busyScheduleIds.contains(state.schedules[i].id),
+                onChanged: (value) => state.toggleSchedule(i, value),
+                onDelete: () => _delete(context, i),
+              ),
+              const SizedBox(height: 13),
+            ],
           const SizedBox(height: 12),
           SurfaceCard(
             color: mint.withValues(alpha: .58),
@@ -55,7 +75,9 @@ class SchedulesPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Scrubby respects Home Assistant automations—these schedules are a focused view for your vacuums.',
+                        state.isDemo
+                            ? 'Connect Home Assistant to create schedules that run while Scrubby is closed.'
+                            : 'Each schedule is an automation stored and executed by Home Assistant.',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ],
@@ -74,16 +96,102 @@ class SchedulesPage extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: cream,
-      builder: (_) => const _ScheduleSheet(),
+      builder: (_) => _ScheduleSheet(state: state),
     );
-    if (result != null) state.addSchedule(result);
+    if (result != null) await state.addSchedule(result);
+  }
+
+  Future<void> _delete(BuildContext context, int index) async {
+    final schedule = state.schedules[index];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete schedule?'),
+        content: Text(
+          state.isDemo
+              ? '“${schedule.title}” will be removed.'
+              : '“${schedule.title}” will be removed from Home Assistant.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await state.deleteSchedule(index);
+  }
+}
+
+class _ScheduleError extends StatelessWidget {
+  const _ScheduleError({required this.message, required this.onRetry});
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
+      color: Theme.of(context).colorScheme.errorContainer,
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline_rounded,
+            color: Theme.of(context).colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(message)),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptySchedules extends StatelessWidget {
+  const _EmptySchedules();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SurfaceCard(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.event_available_rounded, size: 38, color: fern),
+              SizedBox(height: 12),
+              Text(
+                'No cleaning schedules yet',
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              SizedBox(height: 5),
+              Text('Create one to let Home Assistant start your vacuum.'),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
 class _ScheduleCard extends StatelessWidget {
-  const _ScheduleCard({required this.schedule, required this.onChanged});
+  const _ScheduleCard({
+    required this.schedule,
+    required this.vacuumName,
+    required this.busy,
+    required this.onChanged,
+    required this.onDelete,
+  });
   final CleaningSchedule schedule;
+  final String vacuumName;
+  final bool busy;
   final ValueChanged<bool> onChanged;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -142,17 +250,32 @@ class _ScheduleCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 5),
                 Text(
-                  schedule.rooms,
+                  'Whole home · $vacuumName',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
             ),
           ),
-          Switch(
-            value: schedule.enabled,
-            onChanged: onChanged,
-            activeThumbColor: fern,
-          ),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: SizedBox.square(
+                dimension: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+            )
+          else ...[
+            Switch(
+              value: schedule.enabled,
+              onChanged: onChanged,
+              activeThumbColor: fern,
+            ),
+            IconButton(
+              onPressed: onDelete,
+              tooltip: 'Delete schedule',
+              icon: const Icon(Icons.delete_outline_rounded),
+            ),
+          ],
         ],
       ),
     );
@@ -160,7 +283,8 @@ class _ScheduleCard extends StatelessWidget {
 }
 
 class _ScheduleSheet extends StatefulWidget {
-  const _ScheduleSheet();
+  const _ScheduleSheet({required this.state});
+  final AppState state;
   @override
   State<_ScheduleSheet> createState() => _ScheduleSheetState();
 }
@@ -168,6 +292,14 @@ class _ScheduleSheet extends StatefulWidget {
 class _ScheduleSheetState extends State<_ScheduleSheet> {
   TimeOfDay time = const TimeOfDay(hour: 9, minute: 0);
   final title = TextEditingController(text: 'Morning clean');
+  final Set<int> weekdays = {
+    DateTime.monday,
+    DateTime.tuesday,
+    DateTime.wednesday,
+    DateTime.thursday,
+    DateTime.friday,
+  };
+  late String vacuumEntityId = widget.state.vacuum.entityId;
 
   @override
   void dispose() {
@@ -227,6 +359,45 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 if (value != null) setState(() => time = value);
               },
             ),
+            const SizedBox(height: 12),
+            Text('Days', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              children: [
+                for (var day = DateTime.monday; day <= DateTime.sunday; day++)
+                  FilterChip(
+                    label: Text(
+                      const ['M', 'T', 'W', 'T', 'F', 'S', 'S'][day - 1],
+                    ),
+                    selected: weekdays.contains(day),
+                    onSelected: (selected) => setState(() {
+                      if (selected) {
+                        weekdays.add(day);
+                      } else if (weekdays.length > 1) {
+                        weekdays.remove(day);
+                      }
+                    }),
+                  ),
+              ],
+            ),
+            if (widget.state.vacuums.length > 1) ...[
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: vacuumEntityId,
+                decoration: const InputDecoration(labelText: 'Vacuum'),
+                items: [
+                  for (final vacuum in widget.state.vacuums)
+                    DropdownMenuItem(
+                      value: vacuum.entityId,
+                      child: Text(vacuum.name),
+                    ),
+                ],
+                onChanged: (value) {
+                  if (value != null) setState(() => vacuumEntityId = value);
+                },
+              ),
+            ],
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -235,13 +406,15 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                 onPressed: () => Navigator.pop(
                   context,
                   CleaningSchedule(
+                    id: 'scrubby_${DateTime.now().microsecondsSinceEpoch}',
+                    entityId: '',
                     title: title.text.trim().isEmpty
                         ? 'Cleaning'
                         : title.text.trim(),
-                    days: 'EVERY DAY',
+                    weekdays: weekdays.toList()..sort(),
                     time:
                         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
-                    rooms: 'Whole home',
+                    vacuumEntityId: vacuumEntityId,
                   ),
                 ),
                 child: const Text('Create schedule'),

@@ -5,9 +5,15 @@
 // gestures. You can also use WidgetTester to find child widgets in the widget
 // tree, read text, and verify that the values of widget properties are correct.
 
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import 'package:scrubby/main.dart';
 import 'package:scrubby/core/app_state.dart';
@@ -64,6 +70,263 @@ void main() {
     );
     expect(entityWith('Living Room Vacuum').name, 'Living Room Vacuum');
   });
+
+  test('loads only Scrubby-owned Home Assistant schedules', () async {
+    final client = HomeAssistantClient(
+      'http://homeassistant.local:8123',
+      'test-token',
+      httpClient: MockClient((request) async {
+        expect(
+          request.headers[HttpHeaders.authorizationHeader],
+          'Bearer test-token',
+        );
+        if (request.url.path == '/api/states') {
+          return http.Response(
+            jsonEncode([
+              {
+                'entity_id': 'automation.scrubby_morning_clean',
+                'state': 'on',
+                'attributes': {
+                  'id': 'scrubby_123',
+                  'friendly_name': 'Morning clean',
+                },
+              },
+              {
+                'entity_id': 'automation.unrelated',
+                'state': 'on',
+                'attributes': {
+                  'id': 'ordinary_automation',
+                  'friendly_name': 'Unrelated',
+                },
+              },
+            ]),
+            HttpStatus.ok,
+          );
+        }
+        expect(request.url.path, '/api/config/automation/config/scrubby_123');
+        return http.Response(
+          jsonEncode({
+            'alias': 'Morning clean',
+            'trigger': [
+              {'platform': 'time', 'at': '09:30:00'},
+            ],
+            'condition': [
+              {
+                'condition': 'time',
+                'weekday': ['mon', 'wed', 'fri'],
+              },
+            ],
+            'action': [
+              {
+                'service': 'vacuum.start',
+                'target': {'entity_id': 'vacuum.test'},
+              },
+            ],
+          }),
+          HttpStatus.ok,
+        );
+      }),
+    );
+    addTearDown(client.close);
+
+    final schedules = await client.fetchScrubbySchedules();
+
+    expect(schedules, hasLength(1));
+    expect(schedules.single.id, 'scrubby_123');
+    expect(schedules.single.entityId, 'automation.scrubby_morning_clean');
+    expect(schedules.single.title, 'Morning clean');
+    expect(schedules.single.time, '09:30');
+    expect(schedules.single.weekdays, [1, 3, 5]);
+    expect(schedules.single.vacuumEntityId, 'vacuum.test');
+    expect(schedules.single.enabled, isTrue);
+  });
+
+  test('creates a Home Assistant automation and reloads automations', () async {
+    var reloaded = false;
+    final client = HomeAssistantClient(
+      'http://homeassistant.local:8123',
+      'test-token',
+      httpClient: MockClient((request) async {
+        if (request.url.path == '/api/config/automation/config/scrubby_456') {
+          expect(request.method, 'POST');
+          final body = jsonDecode(request.body) as Map<String, dynamic>;
+          expect(body['alias'], 'After lunch');
+          expect(body['trigger'], [
+            {'platform': 'time', 'at': '13:15:00'},
+          ]);
+          expect(body['condition'], [
+            {
+              'condition': 'time',
+              'weekday': ['tue', 'thu'],
+            },
+          ]);
+          expect(body['action'], [
+            {
+              'service': 'vacuum.start',
+              'target': {'entity_id': 'vacuum.downstairs'},
+            },
+          ]);
+          return http.Response('{"result":"ok"}', HttpStatus.ok);
+        }
+        expect(request.url.path, '/api/services/automation/reload');
+        expect(request.method, 'POST');
+        reloaded = true;
+        return http.Response('[]', HttpStatus.ok);
+      }),
+    );
+    addTearDown(client.close);
+
+    await client.createScrubbySchedule(
+      id: 'scrubby_456',
+      title: 'After lunch',
+      time: '13:15',
+      weekdays: [DateTime.tuesday, DateTime.thursday],
+      vacuumEntityId: 'vacuum.downstairs',
+    );
+
+    expect(reloaded, isTrue);
+  });
+
+  test(
+    'receives live vacuum state over the Home Assistant WebSocket API',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final sendEvent = Completer<void>();
+      final eventSent = Completer<void>();
+      var mapFetches = 0;
+      final mapClient = MockClient((request) async {
+        expect(request.url.path, '/api/camera_proxy/camera.test_map');
+        expect(
+          request.headers[HttpHeaders.authorizationHeader],
+          'Bearer test-token',
+        );
+        mapFetches++;
+        return http.Response.bytes([mapFetches], HttpStatus.ok);
+      });
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.add(jsonEncode({'type': 'auth_required'}));
+        socket.listen((rawMessage) async {
+          final message =
+              jsonDecode(rawMessage as String) as Map<String, dynamic>;
+          switch (message['type']) {
+            case 'auth':
+              expect(message['access_token'], 'test-token');
+              socket.add(
+                jsonEncode({'type': 'auth_ok', 'ha_version': '2026.8.0'}),
+              );
+            case 'get_config':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': {'location_name': 'Test Home'},
+                }),
+              );
+            case 'get_states':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': [
+                    {
+                      'entity_id': 'vacuum.test',
+                      'state': 'docked',
+                      'attributes': {'friendly_name': 'Test Vacuum'},
+                    },
+                    {
+                      'entity_id': 'sensor.test_battery',
+                      'state': '81',
+                      'attributes': {'device_class': 'battery'},
+                    },
+                    {
+                      'entity_id': 'camera.test_map',
+                      'state': 'streaming',
+                      'attributes': {'friendly_name': 'Test Vacuum Map'},
+                    },
+                  ],
+                }),
+              );
+            case 'subscribe_events':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': null,
+                }),
+              );
+              await sendEvent.future;
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'event',
+                  'event': {
+                    'event_type': 'state_changed',
+                    'data': {
+                      'entity_id': 'vacuum.test',
+                      'new_state': {
+                        'entity_id': 'vacuum.test',
+                        'state': 'cleaning',
+                        'attributes': {'friendly_name': 'Test Vacuum'},
+                      },
+                    },
+                  },
+                }),
+              );
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'event',
+                  'event': {
+                    'event_type': 'state_changed',
+                    'data': {
+                      'entity_id': 'camera.test_map',
+                      'new_state': {
+                        'entity_id': 'camera.test_map',
+                        'state': 'streaming',
+                        'attributes': {
+                          'friendly_name': 'Test Vacuum Map',
+                          'entity_picture':
+                              '/api/camera_proxy/camera.test_map?token=new',
+                        },
+                      },
+                    },
+                  },
+                }),
+              );
+              eventSent.complete();
+          }
+        });
+      });
+
+      final client = HomeAssistantClient(
+        'http://${server.address.address}:${server.port}',
+        'test-token',
+        httpClient: mapClient,
+      );
+      addTearDown(client.close);
+      expect(await client.connect(), 'Test Home');
+      final initial = await client.fetchVacuums();
+      expect(initial.single.state, 'docked');
+      expect(initial.single.battery, 81);
+      expect(initial.single.mapImage, [1]);
+
+      final liveUpdate = client.vacuumUpdates.firstWhere(
+        (vacuums) =>
+            vacuums.single.state == 'cleaning' &&
+            vacuums.single.mapImage?.first == 2,
+      );
+      sendEvent.complete();
+      await eventSent.future;
+      final updated = (await liveUpdate).single;
+      expect(updated.state, 'cleaning');
+      expect(updated.mapImage, [2]);
+    },
+  );
 
   testWidgets('mobile dashboard controls open and labels stay on one line', (
     WidgetTester tester,

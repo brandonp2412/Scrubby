@@ -19,6 +19,11 @@ class DashboardShell extends StatefulWidget {
 class _DashboardShellState extends State<DashboardShell> {
   int index = 0;
 
+  void _selectPage(int value) {
+    setState(() => index = value);
+    if (value == 2) widget.state.refreshSchedules();
+  }
+
   Future<void> _confirmLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
@@ -62,7 +67,7 @@ class _DashboardShellState extends State<DashboardShell> {
             if (MediaQuery.sizeOf(context).width >= 900)
               _SideRail(
                 index: index,
-                onSelected: (value) => setState(() => index = value),
+                onSelected: _selectPage,
                 onLogout: _confirmLogout,
               ),
             Expanded(
@@ -86,7 +91,7 @@ class _DashboardShellState extends State<DashboardShell> {
         bottomNavigationBar: MediaQuery.sizeOf(context).width < 900
             ? NavigationBar(
                 selectedIndex: index,
-                onDestinationSelected: (value) => setState(() => index = value),
+                onDestinationSelected: _selectPage,
                 destinations: const [
                   NavigationDestination(
                     icon: Icon(Icons.space_dashboard_outlined),

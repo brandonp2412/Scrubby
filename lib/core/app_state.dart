@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -5,26 +7,50 @@ import 'home_assistant.dart';
 
 class CleaningSchedule {
   const CleaningSchedule({
+    required this.id,
+    required this.entityId,
     required this.title,
-    required this.days,
+    required this.weekdays,
     required this.time,
-    required this.rooms,
+    required this.vacuumEntityId,
     this.enabled = true,
   });
 
+  final String id;
+  final String entityId;
   final String title;
-  final String days;
+  final List<int> weekdays;
   final String time;
-  final String rooms;
+  final String vacuumEntityId;
   final bool enabled;
 
-  CleaningSchedule copyWith({bool? enabled}) => CleaningSchedule(
-    title: title,
-    days: days,
-    time: time,
-    rooms: rooms,
-    enabled: enabled ?? this.enabled,
-  );
+  String get days {
+    if (weekdays.length == 7) return 'EVERY DAY';
+    const names = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    return weekdays.map((day) => names[day - 1]).join(' · ');
+  }
+
+  CleaningSchedule copyWith({bool? enabled, String? entityId}) =>
+      CleaningSchedule(
+        id: id,
+        entityId: entityId ?? this.entityId,
+        title: title,
+        weekdays: weekdays,
+        time: time,
+        vacuumEntityId: vacuumEntityId,
+        enabled: enabled ?? this.enabled,
+      );
+
+  factory CleaningSchedule.fromHomeAssistant(HomeAssistantSchedule schedule) =>
+      CleaningSchedule(
+        id: schedule.id,
+        entityId: schedule.entityId,
+        title: schedule.title,
+        weekdays: schedule.weekdays,
+        time: schedule.time,
+        vacuumEntityId: schedule.vacuumEntityId,
+        enabled: schedule.enabled,
+      );
 }
 
 class MapRoomLabel {
@@ -43,6 +69,7 @@ class AppState extends ChangeNotifier {
   static const _tokenKey = 'home_assistant_token';
   final FlutterSecureStorage _secureStorage;
   HomeAssistantClient? _client;
+  StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
   List<VacuumEntity> vacuums = [];
   int selectedVacuum = 0;
   String homeName = 'Home';
@@ -53,21 +80,10 @@ class AppState extends ChangeNotifier {
   String? restoreError;
   final Map<String, List<MapRoomLabel>> _mapRoomLabels = {};
 
-  final List<CleaningSchedule> schedules = [
-    const CleaningSchedule(
-      title: 'Weekday refresh',
-      days: 'MON · WED · FRI',
-      time: '09:30',
-      rooms: 'Kitchen + Living room',
-    ),
-    const CleaningSchedule(
-      title: 'Sunday reset',
-      days: 'SUN',
-      time: '11:00',
-      rooms: 'Whole home',
-      enabled: false,
-    ),
-  ];
+  final List<CleaningSchedule> schedules = [];
+  bool schedulesLoading = false;
+  String? scheduleError;
+  final Set<String> busyScheduleIds = {};
 
   VacuumEntity get vacuum => vacuums[selectedVacuum];
   List<MapRoomLabel> get mapRoomLabels =>
@@ -92,25 +108,50 @@ class AppState extends ChangeNotifier {
 
   Future<void> login(String url, String token, {bool persist = true}) async {
     final client = HomeAssistantClient(url, token.trim());
-    final location = await client.connect();
-    final entities = await client.fetchVacuums();
-    if (entities.isEmpty) {
-      throw Exception('Connected, but no vacuum entities were found.');
+    try {
+      final location = await client.connect();
+      final entities = await client.fetchVacuums();
+      if (entities.isEmpty) {
+        throw Exception('Connected, but no vacuum entities were found.');
+      }
+      if (persist) {
+        await _secureStorage.write(key: _urlKey, value: client.baseUrl);
+        await _secureStorage.write(key: _tokenKey, value: token.trim());
+      }
+      await _vacuumSubscription?.cancel();
+      await _client?.close();
+      _client = client;
+      _vacuumSubscription = client.vacuumUpdates.listen(_applyVacuumUpdate);
+      homeName = location;
+      vacuums = entities;
+      selectedVacuum = 0;
+      isDemo = false;
+      savedUrl = client.baseUrl;
+      restoreError = null;
+      notifyListeners();
+      await refreshSchedules();
+    } catch (_) {
+      await client.close();
+      rethrow;
     }
-    _client = client;
-    homeName = location;
-    vacuums = entities;
-    isDemo = false;
-    savedUrl = client.baseUrl;
-    restoreError = null;
-    if (persist) {
-      await _secureStorage.write(key: _urlKey, value: client.baseUrl);
-      await _secureStorage.write(key: _tokenKey, value: token.trim());
-    }
+  }
+
+  void _applyVacuumUpdate(List<VacuumEntity> updated) {
+    if (updated.isEmpty) return;
+    final selectedId = vacuums.isEmpty ? null : vacuum.entityId;
+    vacuums = updated;
+    final matchingIndex = selectedId == null
+        ? -1
+        : vacuums.indexWhere((item) => item.entityId == selectedId);
+    selectedVacuum = matchingIndex >= 0 ? matchingIndex : 0;
     notifyListeners();
   }
 
   void startDemo() {
+    _vacuumSubscription?.cancel();
+    _vacuumSubscription = null;
+    _client?.close();
+    _client = null;
     homeName = 'Kōwhai House';
     isDemo = true;
     vacuums = const [
@@ -131,6 +172,8 @@ class AppState extends ChangeNotifier {
         fanSpeeds: ['Quiet', 'Balanced', 'Turbo'],
       ),
     ];
+    schedules.clear();
+    scheduleError = null;
     notifyListeners();
   }
 
@@ -190,24 +233,120 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  void toggleSchedule(int index, bool value) {
-    schedules[index] = schedules[index].copyWith(enabled: value);
-    notifyListeners();
+  String vacuumName(String entityId) {
+    final match = vacuums.where((vacuum) => vacuum.entityId == entityId);
+    return match.isEmpty ? entityId : match.first.name;
   }
 
-  void addSchedule(CleaningSchedule schedule) {
-    schedules.add(schedule);
+  Future<void> refreshSchedules() async {
+    if (isDemo || _client == null) return;
+    schedulesLoading = true;
+    scheduleError = null;
     notifyListeners();
+    try {
+      final loaded = await _client!.fetchScrubbySchedules();
+      schedules
+        ..clear()
+        ..addAll(loaded.map(CleaningSchedule.fromHomeAssistant));
+    } catch (error) {
+      scheduleError = _message(error);
+    } finally {
+      schedulesLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> addSchedule(CleaningSchedule schedule) async {
+    if (isDemo) {
+      schedules.add(schedule);
+      notifyListeners();
+      return true;
+    }
+    busyScheduleIds.add(schedule.id);
+    scheduleError = null;
+    notifyListeners();
+    try {
+      await _client!.createScrubbySchedule(
+        id: schedule.id,
+        title: schedule.title,
+        time: schedule.time,
+        weekdays: schedule.weekdays,
+        vacuumEntityId: schedule.vacuumEntityId,
+      );
+      await refreshSchedules();
+      return true;
+    } catch (error) {
+      scheduleError = _message(error);
+      return false;
+    } finally {
+      busyScheduleIds.remove(schedule.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleSchedule(int index, bool value) async {
+    final schedule = schedules[index];
+    if (isDemo) {
+      schedules[index] = schedule.copyWith(enabled: value);
+      notifyListeners();
+      return;
+    }
+    busyScheduleIds.add(schedule.id);
+    scheduleError = null;
+    schedules[index] = schedule.copyWith(enabled: value);
+    notifyListeners();
+    try {
+      await _client!.setScrubbyScheduleEnabled(schedule.entityId, value);
+    } catch (error) {
+      schedules[index] = schedule;
+      scheduleError = _message(error);
+    } finally {
+      busyScheduleIds.remove(schedule.id);
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteSchedule(int index) async {
+    final schedule = schedules[index];
+    busyScheduleIds.add(schedule.id);
+    scheduleError = null;
+    notifyListeners();
+    try {
+      if (!isDemo) await _client!.deleteScrubbySchedule(schedule.id);
+      schedules.removeWhere((item) => item.id == schedule.id);
+    } catch (error) {
+      scheduleError = _message(error);
+    } finally {
+      busyScheduleIds.remove(schedule.id);
+      notifyListeners();
+    }
   }
 
   Future<void> logout() async {
     await _secureStorage.delete(key: _urlKey);
     await _secureStorage.delete(key: _tokenKey);
+    await _vacuumSubscription?.cancel();
+    _vacuumSubscription = null;
+    await _client?.close();
     _client = null;
     vacuums = [];
     selectedVacuum = 0;
     _mapRoomLabels.clear();
+    schedules.clear();
+    scheduleError = null;
     savedUrl = null;
     notifyListeners();
+  }
+
+  String _message(Object error) => error.toString().replaceFirst(
+    RegExp(r'^(Exception|FormatException):\s*'),
+    '',
+  );
+
+  @override
+  void dispose() {
+    _vacuumSubscription?.cancel();
+    _client?.close();
+    super.dispose();
   }
 }

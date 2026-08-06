@@ -430,15 +430,8 @@ class _StatusColumn extends StatelessWidget {
                               state.vacuum.mapImage!,
                               fit: BoxFit.contain,
                               filterQuality: FilterQuality.medium,
+                              gaplessPlayback: true,
                             ),
-                    ),
-                    Positioned(
-                      left: 20,
-                      top: 18,
-                      child: Text(
-                        'Live map',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
                     ),
                     const Positioned(
                       right: 18,
@@ -446,14 +439,6 @@ class _StatusColumn extends StatelessWidget {
                       child: CircleAvatar(
                         backgroundColor: Colors.white,
                         child: Icon(Icons.arrow_outward_rounded, color: fern),
-                      ),
-                    ),
-                    Positioned(
-                      left: 20,
-                      bottom: 18,
-                      child: Text(
-                        'Tap to view route',
-                        style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     ),
                   ],

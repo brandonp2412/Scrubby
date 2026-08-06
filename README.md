@@ -13,7 +13,7 @@ Choose **Explore with demo home** to see the complete interface without a server
 
 ## Home Assistant integration
 
-The app discovers every `vacuum.*` entity through the REST API and currently calls the standard services:
+The app authenticates with Home Assistant's WebSocket API, discovers every `vacuum.*` entity, and subscribes to `state_changed` events so vacuum state, battery, fan speed, and compatible camera/image maps stay live. REST is used for the latest map image bytes and the standard service calls:
 
 - `vacuum.start`
 - `vacuum.pause`

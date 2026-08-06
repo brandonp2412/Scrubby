@@ -92,12 +92,6 @@ class _MapPageState extends State<MapPage> {
             subtitle: map == null
                 ? 'No compatible map entity was found for ${vacuum.name}.'
                 : 'Tap the map for fullscreen, or add labels to your rooms.',
-            trailing: map == null
-                ? null
-                : const Chip(
-                    avatar: Icon(Icons.hub_outlined, size: 18),
-                    label: Text('HOME ASSISTANT'),
-                  ),
           ),
           const SizedBox(height: 24),
           Container(
