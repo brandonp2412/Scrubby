@@ -7,9 +7,12 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'package:scrubby/main.dart';
+import 'package:scrubby/core/app_state.dart';
 import 'package:scrubby/core/home_assistant.dart';
+import 'package:scrubby/screens/dashboard_shell.dart';
 
 void main() {
   testWidgets('shows Home Assistant connection screen', (
@@ -45,6 +48,21 @@ void main() {
     expect(entityWith({'battery_percentage': '72%'}).battery, 72);
     expect(entityWith({'battery': 54.6}).battery, 55);
     expect(entityWith({}).battery, isNull);
+  });
+
+  test('shows only the device portion of a repeated friendly name', () {
+    VacuumEntity entityWith(String friendlyName) => VacuumEntity.fromJson({
+      'entity_id': 'vacuum.test',
+      'state': 'docked',
+      'attributes': {'friendly_name': friendlyName},
+    });
+
+    expect(entityWith('FloorSlut FloorSlut').name, 'FloorSlut');
+    expect(
+      entityWith('Living Room Vacuum Living Room Vacuum').name,
+      'Living Room Vacuum',
+    );
+    expect(entityWith('Living Room Vacuum').name, 'Living Room Vacuum');
   });
 
   testWidgets('mobile dashboard controls open and labels stay on one line', (
@@ -87,4 +105,50 @@ void main() {
     expect(balanced.softWrap, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('asks for confirmation before logging out', (
+    WidgetTester tester,
+  ) async {
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
+
+    await tester.tap(find.byTooltip('Disconnect'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Log out?'), findsOneWidget);
+    expect(
+      find.text(
+        'You’ll need to reconnect to Home Assistant to use Scrubby again.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.text('Today at a glance'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Disconnect'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Log out'));
+    await tester.pumpAndSettle();
+    expect(state.vacuums, isEmpty);
+  });
+}
+
+class _FakeSecureStorage extends FlutterSecureStorage {
+  const _FakeSecureStorage();
+
+  @override
+  Future<void> delete({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {}
 }
