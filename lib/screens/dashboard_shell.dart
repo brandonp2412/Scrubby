@@ -19,6 +19,29 @@ class DashboardShell extends StatefulWidget {
 class _DashboardShellState extends State<DashboardShell> {
   int index = 0;
 
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Log out?'),
+        content: const Text(
+          'You’ll need to reconnect to Home Assistant to use Scrubby again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Log out'),
+          ),
+        ],
+      ),
+    );
+    if (shouldLogout == true && mounted) await widget.state.logout();
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -40,12 +63,12 @@ class _DashboardShellState extends State<DashboardShell> {
               _SideRail(
                 index: index,
                 onSelected: (value) => setState(() => index = value),
-                onLogout: widget.state.logout,
+                onLogout: _confirmLogout,
               ),
             Expanded(
               child: Column(
                 children: [
-                  _TopBar(state: widget.state),
+                  _TopBar(state: widget.state, onLogout: _confirmLogout),
                   Expanded(
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 260),
@@ -94,8 +117,9 @@ class _DashboardShellState extends State<DashboardShell> {
 }
 
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.state});
+  const _TopBar({required this.state, required this.onLogout});
   final AppState state;
+  final VoidCallback onLogout;
 
   @override
   Widget build(BuildContext context) {
@@ -168,7 +192,7 @@ class _TopBar extends StatelessWidget {
           if (MediaQuery.sizeOf(context).width < 900) ...[
             const SizedBox(width: 4),
             IconButton(
-              onPressed: state.logout,
+              onPressed: onLogout,
               tooltip: 'Disconnect',
               icon: const Icon(Icons.logout_rounded),
             ),
