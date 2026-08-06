@@ -21,26 +21,6 @@ class HomePage extends StatelessWidget {
             subtitle: vacuum.isCleaning
                 ? '${vacuum.name} is making the floors lovely.'
                 : '${vacuum.name} is ready when you are.',
-            trailing: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: mint,
-                borderRadius: BorderRadius.circular(30),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.circle, size: 8, color: fern),
-                  const SizedBox(width: 7),
-                  Text(
-                    prettyState(vacuum.state),
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: fern,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
           const SizedBox(height: 28),
           LayoutBuilder(
