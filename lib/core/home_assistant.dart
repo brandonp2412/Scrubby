@@ -42,7 +42,7 @@ class VacuumEntity {
     final attributes = json['attributes'] as Map<String, dynamic>? ?? {};
     return VacuumEntity(
       entityId: json['entity_id'] as String,
-      name: attributes['friendly_name'] as String? ?? 'Robot vacuum',
+      name: _displayName(attributes['friendly_name']),
       state: json['state'] as String? ?? 'unknown',
       battery: _readBattery(attributes),
       fanSpeed: attributes['fan_speed']?.toString(),
@@ -51,6 +51,21 @@ class VacuumEntity {
           .toList(growable: false),
     );
   }
+}
+
+String _displayName(Object? friendlyName) {
+  final name = friendlyName?.toString().trim() ?? '';
+  if (name.isEmpty) return 'Robot vacuum';
+
+  final words = name.split(RegExp(r'\s+'));
+  if (words.length.isEven) {
+    final midpoint = words.length ~/ 2;
+    final firstHalf = words.take(midpoint).join(' ');
+    final secondHalf = words.skip(midpoint).join(' ');
+    if (firstHalf == secondHalf) return firstHalf;
+  }
+
+  return name;
 }
 
 int? _readBattery(Map<String, dynamic> attributes) {
