@@ -14,7 +14,22 @@ class RoomsPage extends StatefulWidget {
 
 class _RoomsPageState extends State<RoomsPage> {
   final selected = <String>{};
-  String mode = 'Balanced';
+  String? mode;
+
+  @override
+  void initState() {
+    super.initState();
+    mode = widget.state.vacuum.fanSpeed;
+  }
+
+  @override
+  void didUpdateWidget(covariant RoomsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state.vacuum.entityId != widget.state.vacuum.entityId) {
+      selected.clear();
+      mode = widget.state.vacuum.fanSpeed;
+    }
+  }
 
   static const _icons = [
     Icons.countertops_outlined,
@@ -31,6 +46,14 @@ class _RoomsPageState extends State<RoomsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final powerModes = widget.state.vacuum.fanSpeeds.isEmpty
+        ? const ['Quiet', 'Balanced', 'Turbo']
+        : widget.state.vacuum.fanSpeeds;
+    final activeMode = powerModes.contains(mode)
+        ? mode!
+        : powerModes.contains(widget.state.vacuum.fanSpeed)
+        ? widget.state.vacuum.fanSpeed!
+        : powerModes.first;
     final labelsBySegment = {
       for (final label in widget.state.mapRoomLabels)
         if (label.segmentId != null) label.segmentId!: label,
@@ -121,29 +144,26 @@ class _RoomsPageState extends State<RoomsPage> {
                       width: double.infinity,
                       child: SegmentedButton<String>(
                         segments: [
-                          ButtonSegment(
-                            value: 'Quiet',
-                            icon: showIcons
-                                ? const Icon(Icons.air_rounded)
-                                : null,
-                            label: label('Quiet'),
-                          ),
-                          ButtonSegment(
-                            value: 'Balanced',
-                            icon: showIcons
-                                ? const Icon(Icons.tune_rounded)
-                                : null,
-                            label: label('Balanced'),
-                          ),
-                          ButtonSegment(
-                            value: 'Turbo',
-                            icon: showIcons
-                                ? const Icon(Icons.bolt_rounded)
-                                : null,
-                            label: label('Turbo'),
-                          ),
+                          for (
+                            var index = 0;
+                            index < powerModes.length;
+                            index++
+                          )
+                            ButtonSegment(
+                              value: powerModes[index],
+                              icon: showIcons
+                                  ? Icon(
+                                      index == 0
+                                          ? Icons.air_rounded
+                                          : index == powerModes.length - 1
+                                          ? Icons.bolt_rounded
+                                          : Icons.tune_rounded,
+                                    )
+                                  : null,
+                              label: label(powerModes[index]),
+                            ),
                         ],
-                        selected: {mode},
+                        selected: {activeMode},
                         onSelectionChanged: (value) =>
                             setState(() => mode = value.first),
                         showSelectedIcon: false,
@@ -189,6 +209,12 @@ class _RoomsPageState extends State<RoomsPage> {
         .map((room) => room.name)
         .toList(growable: false);
     try {
+      final supportedPower = widget.state.vacuum.fanSpeeds;
+      final selectedPower =
+          mode ??
+          widget.state.vacuum.fanSpeed ??
+          (supportedPower.isEmpty ? 'Balanced' : supportedPower.first);
+      await widget.state.setFanSpeed(selectedPower);
       await widget.state.cleanRooms(
         selectedRooms.map((room) => room.segmentId!).toList(growable: false),
       );

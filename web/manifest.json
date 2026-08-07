@@ -1,11 +1,11 @@
 {
-    "name": "scrubby",
-    "short_name": "scrubby",
+    "name": "Scrubby",
+    "short_name": "Scrubby",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#BDF5D8",
+    "theme_color": "#174D3C",
+    "description": "A focused Home Assistant companion for robot vacuums.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

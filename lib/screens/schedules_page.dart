@@ -169,7 +169,7 @@ class _ScheduleCard extends StatelessWidget {
                 width: 68,
                 height: 68,
                 decoration: BoxDecoration(
-                  color: schedule.enabled ? ink : ink.withValues(alpha: .07),
+                  color: ink.withValues(alpha: .07),
                   borderRadius: BorderRadius.circular(18),
                 ),
                 child: Column(
@@ -180,7 +180,7 @@ class _ScheduleCard extends StatelessWidget {
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 18,
-                        color: schedule.enabled ? Colors.white : ink,
+                        color: ink,
                       ),
                     ),
                     Text(
@@ -188,9 +188,7 @@ class _ScheduleCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 9,
                         letterSpacing: 1,
-                        color: schedule.enabled
-                            ? Colors.white54
-                            : ink.withValues(alpha: .45),
+                        color: ink.withValues(alpha: .45),
                       ),
                     ),
                   ],
@@ -225,29 +223,20 @@ class _ScheduleCard extends StatelessWidget {
               ),
             ],
           ),
+          SizedBox(height: 8),
           Row(
             children: [
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: SizedBox.square(
-                    dimension: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.5),
-                  ),
-                )
-              else ...[
-                Switch(
-                  value: schedule.enabled,
-                  onChanged: onChanged,
-                  activeThumbColor: fern,
-                ),
-                Spacer(),
-                IconButton(
-                  onPressed: onDelete,
-                  tooltip: 'Delete schedule',
-                  icon: const Icon(Icons.delete_outline_rounded),
-                ),
-              ],
+              Switch(
+                value: schedule.enabled,
+                onChanged: onChanged,
+                activeThumbColor: fern,
+              ),
+              Spacer(),
+              IconButton(
+                onPressed: onDelete,
+                tooltip: 'Delete schedule',
+                icon: const Icon(Icons.delete_outline_rounded),
+              ),
             ],
           ),
         ],

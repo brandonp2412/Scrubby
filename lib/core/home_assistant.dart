@@ -77,6 +77,74 @@ class VacuumSegment {
   );
 }
 
+enum VacuumSettingKind { toggle, select, number, action }
+
+/// A configurable Home Assistant entity belonging to the vacuum's device.
+/// Dreame exposes model-specific options (including carpet behaviour) as
+/// switch, select, number and button entities, so this stays capability based.
+class VacuumSetting {
+  const VacuumSetting({
+    required this.entityId,
+    required this.name,
+    required this.kind,
+    required this.value,
+    this.options = const [],
+    this.minimum,
+    this.maximum,
+    this.step,
+    this.unit,
+    this.available = true,
+  });
+
+  final String entityId;
+  final String name;
+  final VacuumSettingKind kind;
+  final String value;
+  final List<String> options;
+  final double? minimum;
+  final double? maximum;
+  final double? step;
+  final String? unit;
+  final bool available;
+
+  bool get enabled => value == 'on';
+
+  String get category {
+    final searchable = '$entityId $name'.toLowerCase();
+    if (searchable.contains('carpet') || searchable.contains('rug')) {
+      return 'Carpets';
+    }
+    if (RegExp(r'mop|water|wash|dry|detergent').hasMatch(searchable)) {
+      return 'Mopping';
+    }
+    if (RegExp(r'dock|empty|base|charging').hasMatch(searchable)) {
+      return 'Dock';
+    }
+    if (RegExp(r'brush|filter|sensor|maintenance|reset').hasMatch(searchable)) {
+      return 'Care & maintenance';
+    }
+    if (RegExp(
+      r'clean|suction|route|obstacle|collision|edge|boost',
+    ).hasMatch(searchable)) {
+      return 'Cleaning';
+    }
+    return 'Robot preferences';
+  }
+
+  VacuumSetting copyWithValue(String newValue) => VacuumSetting(
+    entityId: entityId,
+    name: name,
+    kind: kind,
+    value: newValue,
+    options: options,
+    minimum: minimum,
+    maximum: maximum,
+    step: step,
+    unit: unit,
+    available: available,
+  );
+}
+
 class HomeAssistantSchedule {
   const HomeAssistantSchedule({
     required this.id,
@@ -519,6 +587,122 @@ class HomeAssistantClient {
         .whereType<Map<String, dynamic>>()
         .map(VacuumSegment.fromJson)
         .toList(growable: false);
+  }
+
+  Future<List<VacuumSetting>> fetchVacuumSettings(String vacuumEntityId) async {
+    final registryResult = await _sendSocketCommand({
+      'type': 'config/entity_registry/list',
+    });
+    final registry = (registryResult as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .toList(growable: false);
+    final vacuumEntry = registry.where(
+      (entry) => entry['entity_id'] == vacuumEntityId,
+    );
+    if (vacuumEntry.isEmpty) return const [];
+    final deviceId = vacuumEntry.first['device_id']?.toString();
+    if (deviceId == null || deviceId.isEmpty) return const [];
+
+    const supportedDomains = {'switch', 'select', 'number', 'button'};
+    final settings = <VacuumSetting>[];
+    for (final entry in registry) {
+      if (entry['device_id']?.toString() != deviceId ||
+          entry['disabled_by'] != null ||
+          entry['hidden_by'] != null) {
+        continue;
+      }
+      final entityId = entry['entity_id']?.toString() ?? '';
+      final domain = entityId.split('.').first;
+      if (!supportedDomains.contains(domain)) continue;
+      final state = _states[entityId];
+      if (state == null) continue;
+      final attributes =
+          state['attributes'] as Map<String, dynamic>? ?? const {};
+      final rawName = entry['name']?.toString().trim().isNotEmpty == true
+          ? entry['name'].toString()
+          : attributes['friendly_name']?.toString() ??
+                entry['original_name']?.toString() ??
+                entityId.split('.').last.replaceAll('_', ' ');
+      final name = _settingName(rawName, vacuumEntityId);
+      final kind = switch (domain) {
+        'switch' => VacuumSettingKind.toggle,
+        'select' => VacuumSettingKind.select,
+        'number' => VacuumSettingKind.number,
+        _ => VacuumSettingKind.action,
+      };
+      settings.add(
+        VacuumSetting(
+          entityId: entityId,
+          name: name,
+          kind: kind,
+          value: state['state']?.toString() ?? 'unknown',
+          options: (attributes['options'] as List<dynamic>? ?? const [])
+              .map((option) => option.toString())
+              .toList(growable: false),
+          minimum: (attributes['min'] as num?)?.toDouble(),
+          maximum: (attributes['max'] as num?)?.toDouble(),
+          step: (attributes['step'] as num?)?.toDouble(),
+          unit: attributes['unit_of_measurement']?.toString(),
+          available:
+              state['state'] != 'unavailable' && state['state'] != 'unknown',
+        ),
+      );
+    }
+    const categoryOrder = [
+      'Carpets',
+      'Cleaning',
+      'Mopping',
+      'Dock',
+      'Care & maintenance',
+      'Robot preferences',
+    ];
+    settings.sort((a, b) {
+      final category = categoryOrder
+          .indexOf(a.category)
+          .compareTo(categoryOrder.indexOf(b.category));
+      return category != 0 ? category : a.name.compareTo(b.name);
+    });
+    return settings;
+  }
+
+  String _settingName(String rawName, String vacuumEntityId) {
+    var name = rawName.trim();
+    final vacuumName = _states[vacuumEntityId]?['attributes']?['friendly_name']
+        ?.toString()
+        .trim();
+    if (vacuumName != null &&
+        name.toLowerCase().startsWith('${vacuumName.toLowerCase()} ')) {
+      name = name.substring(vacuumName.length).trim();
+    }
+    return name.isEmpty ? rawName : name;
+  }
+
+  Future<void> setVacuumSetting(VacuumSetting setting, Object? value) async {
+    final domain = setting.entityId.split('.').first;
+    switch (setting.kind) {
+      case VacuumSettingKind.toggle:
+        await callService(
+          'switch',
+          value == true ? 'turn_on' : 'turn_off',
+          entityId: setting.entityId,
+        );
+      case VacuumSettingKind.select:
+        await callService(
+          'select',
+          'select_option',
+          entityId: setting.entityId,
+          data: {'option': value?.toString()},
+        );
+      case VacuumSettingKind.number:
+        await callService(
+          'number',
+          'set_value',
+          entityId: setting.entityId,
+          data: {'value': value},
+        );
+      case VacuumSettingKind.action:
+        await callService(domain, 'press', entityId: setting.entityId);
+    }
   }
 
   int? _findBattery(

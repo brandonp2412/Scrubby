@@ -119,7 +119,11 @@ class AppState extends ChangeNotifier {
   String? restoreError;
   final Map<String, List<MapRoomLabel>> _mapRoomLabels = {};
   final Map<String, List<VacuumSegment>> _vacuumSegments = {};
+  final Map<String, List<VacuumSetting>> _vacuumSettings = {};
   String? roomCapabilityError;
+  bool settingsLoading = false;
+  String? settingsError;
+  final Set<String> busySettingIds = {};
 
   final List<CleaningSchedule> schedules = [];
   bool schedulesLoading = false;
@@ -131,6 +135,8 @@ class AppState extends ChangeNotifier {
       _mapRoomLabels.putIfAbsent(vacuum.entityId, () => []);
   List<VacuumSegment> get vacuumSegments =>
       _vacuumSegments[vacuum.entityId] ?? const [];
+  List<VacuumSetting> get vacuumSettings =>
+      _vacuumSettings[vacuum.entityId] ?? const [];
 
   Future<void> initialize() async {
     try {
@@ -173,6 +179,7 @@ class AppState extends ChangeNotifier {
       savedUrl = client.baseUrl;
       restoreError = null;
       await _loadVacuumSegments();
+      await refreshVacuumSettings();
       notifyListeners();
       await refreshSchedules();
     } catch (_) {
@@ -255,12 +262,105 @@ class AppState extends ChangeNotifier {
       VacuumSegment(id: '3', name: 'Room 3'),
       VacuumSegment(id: '4', name: 'Room 4'),
     ];
+    _vacuumSettings[vacuum.entityId] = [
+      const VacuumSetting(
+        entityId: 'select.orbit_carpet_cleaning_mode',
+        name: 'Carpet cleaning mode',
+        kind: VacuumSettingKind.select,
+        value: 'Intensive',
+        options: ['Avoid', 'Adaptation', 'Intensive'],
+      ),
+      const VacuumSetting(
+        entityId: 'switch.orbit_clean_carpets_first',
+        name: 'Clean carpets first',
+        kind: VacuumSettingKind.toggle,
+        value: 'on',
+      ),
+      const VacuumSetting(
+        entityId: 'switch.orbit_carpet_boost',
+        name: 'Carpet boost',
+        kind: VacuumSettingKind.toggle,
+        value: 'on',
+      ),
+      const VacuumSetting(
+        entityId: 'select.orbit_cleaning_route',
+        name: 'Cleaning route',
+        kind: VacuumSettingKind.select,
+        value: 'Standard',
+        options: ['Quick', 'Standard', 'Deep'],
+      ),
+      const VacuumSetting(
+        entityId: 'select.orbit_mop_wash_frequency',
+        name: 'Mop wash frequency',
+        kind: VacuumSettingKind.select,
+        value: 'By area',
+        options: ['By area', 'By room', 'By time'],
+      ),
+      const VacuumSetting(
+        entityId: 'switch.orbit_auto_empty',
+        name: 'Auto-empty after cleaning',
+        kind: VacuumSettingKind.toggle,
+        value: 'on',
+      ),
+      const VacuumSetting(
+        entityId: 'number.orbit_drying_time',
+        name: 'Mop drying time',
+        kind: VacuumSettingKind.number,
+        value: '3',
+        minimum: 2,
+        maximum: 4,
+        step: 1,
+        unit: 'h',
+      ),
+    ];
     notifyListeners();
   }
 
   void selectVacuum(int index) {
     selectedVacuum = index;
     notifyListeners();
+    unawaited(refreshVacuumSettings());
+  }
+
+  Future<void> refreshVacuumSettings() async {
+    if (isDemo || _client == null || vacuums.isEmpty) return;
+    final entityId = vacuum.entityId;
+    settingsLoading = true;
+    settingsError = null;
+    notifyListeners();
+    try {
+      _vacuumSettings[entityId] = await _client!.fetchVacuumSettings(entityId);
+    } catch (error) {
+      settingsError = _message(error);
+    } finally {
+      settingsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> setVacuumSetting(VacuumSetting setting, Object? value) async {
+    if (busySettingIds.contains(setting.entityId)) return;
+    busySettingIds.add(setting.entityId);
+    notifyListeners();
+    try {
+      if (!isDemo) await _client!.setVacuumSetting(setting, value);
+      if (setting.kind != VacuumSettingKind.action) {
+        final settings = _vacuumSettings[vacuum.entityId];
+        final index =
+            settings?.indexWhere((item) => item.entityId == setting.entityId) ??
+            -1;
+        if (settings != null && index >= 0) {
+          settings[index] = setting.copyWithValue(
+            setting.kind == VacuumSettingKind.toggle
+                ? (value == true ? 'on' : 'off')
+                : value.toString(),
+          );
+        }
+      }
+    } finally {
+      busySettingIds.remove(setting.entityId);
+      notifyListeners();
+    }
   }
 
   Future<void> toggleCleaning() async {

@@ -7,6 +7,7 @@ import 'home_page.dart';
 import 'map_page.dart';
 import 'rooms_page.dart';
 import 'schedules_page.dart';
+import 'settings_page.dart';
 
 class DashboardShell extends StatefulWidget {
   const DashboardShell({super.key, required this.state});
@@ -22,6 +23,7 @@ class _DashboardShellState extends State<DashboardShell> {
   void _selectPage(int value) {
     setState(() => index = value);
     if (value == 2) widget.state.refreshSchedules();
+    if (value == 4) widget.state.refreshVacuumSettings();
   }
 
   Future<void> _confirmLogout() async {
@@ -54,6 +56,7 @@ class _DashboardShellState extends State<DashboardShell> {
       MapPage(state: widget.state),
       SchedulesPage(state: widget.state),
       RoomsPage(state: widget.state),
+      SettingsPage(state: widget.state),
     ];
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -112,6 +115,11 @@ class _DashboardShellState extends State<DashboardShell> {
                     icon: Icon(Icons.door_front_door_outlined),
                     selectedIcon: Icon(Icons.door_front_door),
                     label: 'Rooms',
+                  ),
+                  NavigationDestination(
+                    icon: Icon(Icons.tune_outlined),
+                    selectedIcon: Icon(Icons.tune_rounded),
+                    label: 'Settings',
                   ),
                 ],
               )
@@ -308,6 +316,12 @@ class _SideRail extends StatelessWidget {
             label: 'Rooms',
             selected: index == 3,
             onTap: () => onSelected(3),
+          ),
+          _RailItem(
+            icon: Icons.tune_rounded,
+            label: 'Robot settings',
+            selected: index == 4,
+            onTap: () => onSelected(4),
           ),
           const Spacer(),
           _RailItem(

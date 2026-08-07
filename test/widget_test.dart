@@ -21,6 +21,7 @@ import 'package:scrubby/core/home_assistant.dart';
 import 'package:scrubby/screens/dashboard_shell.dart';
 import 'package:scrubby/screens/map_page.dart';
 import 'package:scrubby/screens/rooms_page.dart';
+import 'package:scrubby/screens/settings_page.dart';
 
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
@@ -195,6 +196,58 @@ void main() {
 
     expect(reloaded, isTrue);
   });
+
+  test(
+    'uses native Home Assistant services for discovered robot settings',
+    () async {
+      final calls = <Map<String, dynamic>>[];
+      final client = HomeAssistantClient(
+        'http://homeassistant.local:8123',
+        'test-token',
+        httpClient: MockClient((request) async {
+          calls.add({
+            'path': request.url.path,
+            'body': jsonDecode(request.body),
+          });
+          return http.Response('[]', HttpStatus.ok);
+        }),
+      );
+      addTearDown(client.close);
+
+      await client.setVacuumSetting(
+        const VacuumSetting(
+          entityId: 'switch.dreame_clean_carpets_first',
+          name: 'Clean carpets first',
+          kind: VacuumSettingKind.toggle,
+          value: 'off',
+        ),
+        true,
+      );
+      await client.setVacuumSetting(
+        const VacuumSetting(
+          entityId: 'select.dreame_carpet_cleaning_mode',
+          name: 'Carpet cleaning mode',
+          kind: VacuumSettingKind.select,
+          value: 'Avoid',
+        ),
+        'Intensive',
+      );
+
+      expect(calls, [
+        {
+          'path': '/api/services/switch/turn_on',
+          'body': {'entity_id': 'switch.dreame_clean_carpets_first'},
+        },
+        {
+          'path': '/api/services/select/select_option',
+          'body': {
+            'entity_id': 'select.dreame_carpet_cleaning_mode',
+            'option': 'Intensive',
+          },
+        },
+      ]);
+    },
+  );
 
   test(
     'discovers HA vacuum segments and runs the Dreame room service',
@@ -587,6 +640,52 @@ void main() {
     await tester.tap(find.text('Log out'));
     await tester.pumpAndSettle();
     expect(state.vacuums, isEmpty);
+  });
+
+  testWidgets('shows and updates Dreame carpet settings', (
+    WidgetTester tester,
+  ) async {
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SettingsPage(state: state)),
+      ),
+    );
+
+    expect(find.text('Carpets'), findsOneWidget);
+    expect(find.text('Carpet cleaning mode'), findsOneWidget);
+    expect(find.text('Clean carpets first'), findsOneWidget);
+    expect(find.text('Carpet boost'), findsOneWidget);
+
+    await tester.tap(find.text('Intensive'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Adaptation').last);
+    await tester.pumpAndSettle();
+
+    final carpetMode = state.vacuumSettings.firstWhere(
+      (setting) => setting.name == 'Carpet cleaning mode',
+    );
+    expect(carpetMode.value, 'Adaptation');
+
+    final cleanFirstRow = find
+        .ancestor(
+          of: find.text('Clean carpets first'),
+          matching: find.byType(Row),
+        )
+        .first;
+    await tester.tap(
+      find.descendant(of: cleanFirstRow, matching: find.byType(Switch)),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      state.vacuumSettings
+          .firstWhere((setting) => setting.name == 'Clean carpets first')
+          .enabled,
+      isFalse,
+    );
   });
 }
 
