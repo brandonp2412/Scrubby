@@ -95,6 +95,146 @@ class SegmentCleaningCapability {
   bool get supportsRepeats => maximumRepeats > minimumRepeats;
 }
 
+enum DreameNotificationCategory {
+  cleanup,
+  consumable,
+  information,
+  warning,
+  error,
+}
+
+/// A notification emitted by Tasshack's Dreame Home Assistant integration.
+///
+/// The integration fires five event types on the HA event bus. Keeping the
+/// parser here makes the WebSocket boundary explicit and lets the native
+/// notification layer remain independent from Home Assistant JSON.
+class DreameNotification {
+  const DreameNotification({
+    required this.category,
+    required this.entityId,
+    required this.title,
+    required this.body,
+    this.code,
+  });
+
+  static const supportedEventTypes = <String>{
+    'dreame_vacuum_task_status',
+    'dreame_vacuum_consumable',
+    'dreame_vacuum_information',
+    'dreame_vacuum_warning',
+    'dreame_vacuum_error',
+  };
+
+  final DreameNotificationCategory category;
+  final String entityId;
+  final String title;
+  final String body;
+  final int? code;
+
+  static DreameNotification? fromHomeAssistantEvent(
+    Map<String, dynamic> event,
+  ) {
+    final eventType = event['event_type']?.toString() ?? '';
+    if (!supportedEventTypes.contains(eventType)) return null;
+    final data = event['data'] as Map<String, dynamic>? ?? const {};
+    final entityId = data['entity_id']?.toString() ?? '';
+    final suffix = eventType.substring('dreame_vacuum_'.length);
+    return switch (suffix) {
+      'task_status' => _taskNotification(entityId, data),
+      'consumable' => DreameNotification(
+        category: DreameNotificationCategory.consumable,
+        entityId: entityId,
+        title: 'Maintenance needed',
+        body: _consumableMessage(data['consumable']?.toString()),
+      ),
+      'information' => DreameNotification(
+        category: DreameNotificationCategory.information,
+        entityId: entityId,
+        title: 'Robot information',
+        body: _informationMessage(data['information']?.toString()),
+      ),
+      'warning' => DreameNotification(
+        category: DreameNotificationCategory.warning,
+        entityId: entityId,
+        title: 'Robot warning',
+        body: _humanize(data['warning']?.toString() ?? 'Attention required'),
+        code: _integer(data['code']),
+      ),
+      'error' => DreameNotification(
+        category: DreameNotificationCategory.error,
+        entityId: entityId,
+        title: 'Robot error',
+        body: _humanize(data['error']?.toString() ?? 'Robot error'),
+        code: _integer(data['code']),
+      ),
+      _ => null,
+    };
+  }
+
+  static DreameNotification _taskNotification(
+    String entityId,
+    Map<String, dynamic> data,
+  ) {
+    final completed = data['completed'] == true;
+    final status = _humanize(data['status']?.toString() ?? 'Cleaning');
+    if (!completed) {
+      return DreameNotification(
+        category: DreameNotificationCategory.cleanup,
+        entityId: entityId,
+        title: 'Cleaning started',
+        body: status,
+      );
+    }
+    final details = <String>[];
+    final area = data['cleaned_area'];
+    final minutes = data['cleaning_time'];
+    if (area != null) details.add('$area m²');
+    if (minutes != null) details.add('$minutes min');
+    return DreameNotification(
+      category: DreameNotificationCategory.cleanup,
+      entityId: entityId,
+      title: 'Cleanup completed',
+      body: details.isEmpty ? status : details.join(' · '),
+    );
+  }
+
+  static String _consumableMessage(String? value) => switch (value) {
+    'main_brush' => 'Replace the main brush and reset its counter.',
+    'side_brush' => 'Replace the side brush and reset its counter.',
+    'filter' ||
+    'secondary_filter' => 'Replace the filter and reset its counter.',
+    'sensor' => 'Clean the sensors and reset their counter.',
+    'mop_pad' => 'Replace the mop pad and reset its counter.',
+    'silver_ion' => 'Replace the silver-ion sterilizer and reset its counter.',
+    'detergent' => 'Check and replace the floor-cleaning solution.',
+    _ => _humanize(value ?? 'A consumable needs attention'),
+  };
+
+  static String _informationMessage(String? value) => switch (value) {
+    'dust_collection' =>
+      'Auto-empty was not performed during the do-not-disturb period.',
+    'cleaning_paused' =>
+      'Cleaning is paused and will resume after charging or do-not-disturb.',
+    _ => _humanize(value ?? 'Robot information'),
+  };
+
+  static String _humanize(String value) {
+    final withoutMarkdown = value
+        .replaceAll(RegExp(r'!\[[^]]*\]\([^)]*\)'), '')
+        .replaceAll(RegExp(r'[#*_`]'), '')
+        .trim();
+    if (withoutMarkdown.isEmpty) return 'Attention required';
+    if (withoutMarkdown.contains(' ') || withoutMarkdown.contains('\n')) {
+      return withoutMarkdown;
+    }
+    final words = withoutMarkdown.replaceAll('_', ' ');
+    return '${words[0].toUpperCase()}${words.substring(1)}';
+  }
+
+  static int? _integer(Object? value) =>
+      value is num ? value.toInt() : int.tryParse(value?.toString() ?? '');
+}
+
 enum VacuumSettingKind { toggle, select, number, action }
 
 /// A configurable Home Assistant entity belonging to the vacuum's device.
@@ -247,6 +387,7 @@ class HomeAssistantClient {
   final http.Client _httpClient;
   final bool _ownsHttpClient;
   final _vacuumUpdates = StreamController<List<VacuumEntity>>.broadcast();
+  final _notificationUpdates = StreamController<DreameNotification>.broadcast();
   final Map<String, Map<String, dynamic>> _states = {};
   final Map<String, Uint8List> _mapImages = {};
   final Map<String, String> _mapEntityIds = {};
@@ -259,10 +400,12 @@ class HomeAssistantClient {
   bool _closed = false;
   bool _isConnecting = false;
   int _connectionGeneration = 0;
-  int _nextCommandId = 4;
+  int _nextCommandId = 9;
   String _locationName = 'Home';
 
   Stream<List<VacuumEntity>> get vacuumUpdates => _vacuumUpdates.stream;
+  Stream<DreameNotification> get notificationUpdates =>
+      _notificationUpdates.stream;
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer $token',
@@ -351,13 +494,19 @@ class HomeAssistantClient {
               case 'auth_ok':
                 channel.sink.add(jsonEncode({'id': 1, 'type': 'get_config'}));
                 channel.sink.add(jsonEncode({'id': 2, 'type': 'get_states'}));
-                channel.sink.add(
-                  jsonEncode({
-                    'id': 3,
-                    'type': 'subscribe_events',
-                    'event_type': 'state_changed',
-                  }),
-                );
+                final eventTypes = <String>[
+                  'state_changed',
+                  ...DreameNotification.supportedEventTypes,
+                ];
+                for (var index = 0; index < eventTypes.length; index++) {
+                  channel.sink.add(
+                    jsonEncode({
+                      'id': index + 3,
+                      'type': 'subscribe_events',
+                      'event_type': eventTypes[index],
+                    }),
+                  );
+                }
               case 'auth_invalid':
                 if (!ready.isCompleted) {
                   ready.completeError(
@@ -449,7 +598,14 @@ class HomeAssistantClient {
 
   void _handleEvent(Map<String, dynamic> message) {
     final event = message['event'] as Map<String, dynamic>?;
-    final data = event?['data'] as Map<String, dynamic>?;
+    if (event == null) return;
+    final notification = DreameNotification.fromHomeAssistantEvent(event);
+    if (notification != null) {
+      _notificationUpdates.add(notification);
+      return;
+    }
+    if (event['event_type'] != 'state_changed') return;
+    final data = event['data'] as Map<String, dynamic>?;
     final entityId = data?['entity_id'] as String?;
     if (entityId == null) return;
     final oldState = _states[entityId];
@@ -582,6 +738,7 @@ class HomeAssistantClient {
     await _socketSubscription?.cancel();
     await _channel?.sink.close();
     await _vacuumUpdates.close();
+    await _notificationUpdates.close();
     if (_ownsHttpClient) _httpClient.close();
   }
 

@@ -121,6 +121,39 @@ void main() {
     expect(entityWith('Living Room Vacuum').name, 'Living Room Vacuum');
   });
 
+  test('parses every Dreame Home Assistant notification event family', () {
+    DreameNotification parse(String type, Map<String, Object?> data) =>
+        DreameNotification.fromHomeAssistantEvent({
+          'event_type': 'dreame_vacuum_$type',
+          'data': {'entity_id': 'vacuum.dreame', ...data},
+        })!;
+
+    expect(
+      parse('task_status', {
+        'completed': true,
+        'cleaned_area': 42,
+        'cleaning_time': 55,
+      }).category,
+      DreameNotificationCategory.cleanup,
+    );
+    expect(
+      parse('consumable', {'consumable': 'main_brush'}).body,
+      contains('main brush'),
+    );
+    expect(
+      parse('information', {'information': 'dust_collection'}).category,
+      DreameNotificationCategory.information,
+    );
+    expect(
+      parse('warning', {'warning': 'Clean water tank', 'code': 12}).code,
+      12,
+    );
+    expect(
+      parse('error', {'error': 'Wheel blocked', 'code': 3}).category,
+      DreameNotificationCategory.error,
+    );
+  });
+
   test('loads only Scrubby-owned Home Assistant schedules', () async {
     final client = HomeAssistantClient(
       'http://homeassistant.local:8123',
@@ -614,7 +647,29 @@ void main() {
                   'result': null,
                 }),
               );
+              if (message['event_type'] != 'state_changed' &&
+                  message['event_type'] != 'dreame_vacuum_error') {
+                return;
+              }
               await sendEvent.future;
+              if (message['event_type'] == 'dreame_vacuum_error') {
+                socket.add(
+                  jsonEncode({
+                    'id': message['id'],
+                    'type': 'event',
+                    'event': {
+                      'event_type': 'dreame_vacuum_error',
+                      'data': {
+                        'entity_id': 'vacuum.test',
+                        'error': 'Left wheel blocked',
+                        'code': 3,
+                      },
+                    },
+                  }),
+                );
+                eventSent.complete();
+                return;
+              }
               socket.add(
                 jsonEncode({
                   'id': message['id'],
@@ -653,7 +708,6 @@ void main() {
                   },
                 }),
               );
-              eventSent.complete();
           }
         });
       });
@@ -675,11 +729,13 @@ void main() {
             vacuums.single.state == 'cleaning' &&
             vacuums.single.mapImage?.first == 2,
       );
+      final notification = client.notificationUpdates.first;
       sendEvent.complete();
       await eventSent.future;
       final updated = (await liveUpdate).single;
       expect(updated.state, 'cleaning');
       expect(updated.mapImage, [2]);
+      expect((await notification).body, 'Left wheel blocked');
     },
   );
 

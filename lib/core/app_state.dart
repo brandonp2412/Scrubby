@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'home_assistant.dart';
+import 'notifications.dart';
 
 class CleaningSchedule {
   const CleaningSchedule({
@@ -116,15 +117,21 @@ class MapRoomLabel {
 }
 
 class AppState extends ChangeNotifier {
-  AppState({FlutterSecureStorage? secureStorage})
-    : _secureStorage = secureStorage ?? const FlutterSecureStorage();
+  AppState({
+    FlutterSecureStorage? secureStorage,
+    VacuumNotificationPresenter? notificationPresenter,
+  }) : _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+       _notificationPresenter =
+           notificationPresenter ?? LocalVacuumNotificationPresenter.instance;
 
   static const _urlKey = 'home_assistant_url';
   static const _tokenKey = 'home_assistant_token';
   static const _roomLabelsKey = 'map_room_labels';
   final FlutterSecureStorage _secureStorage;
+  final VacuumNotificationPresenter _notificationPresenter;
   HomeAssistantClient? _client;
   StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
+  StreamSubscription<DreameNotification>? _notificationSubscription;
   List<VacuumEntity> vacuums = [];
   int selectedVacuum = 0;
   String homeName = 'Home';
@@ -216,9 +223,13 @@ class AppState extends ChangeNotifier {
         await _secureStorage.write(key: _tokenKey, value: token.trim());
       }
       await _vacuumSubscription?.cancel();
+      await _notificationSubscription?.cancel();
       await _client?.close();
       _client = client;
       _vacuumSubscription = client.vacuumUpdates.listen(_applyVacuumUpdate);
+      _notificationSubscription = client.notificationUpdates.listen(
+        _showNotification,
+      );
       homeName = location;
       vacuums = entities;
       selectedVacuum = 0;
@@ -228,6 +239,7 @@ class AppState extends ChangeNotifier {
       await _loadVacuumSegments();
       await refreshVacuumSettings();
       notifyListeners();
+      unawaited(_notificationPresenter.requestPermissions());
       await refreshSchedules();
     } catch (_) {
       await client.close();
@@ -246,9 +258,42 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _showNotification(DreameNotification notification) {
+    final matches = vacuums.where(
+      (vacuum) => vacuum.entityId == notification.entityId,
+    );
+    unawaited(
+      _notificationPresenter.show(
+        notification,
+        vacuumName: matches.isEmpty ? null : matches.first.name,
+      ),
+    );
+  }
+
+  /// Move event delivery to the Android foreground-service isolate while the
+  /// Flutter UI is suspended. The UI socket remains responsible for state
+  /// updates whenever the app is visible.
+  Future<void> enterBackground() async {
+    if (isDemo || _client == null) return;
+    await _notificationSubscription?.cancel();
+    _notificationSubscription = null;
+    await startBackgroundNotificationService();
+  }
+
+  Future<void> enterForeground() async {
+    await stopBackgroundNotificationService();
+    if (_client != null && _notificationSubscription == null) {
+      _notificationSubscription = _client!.notificationUpdates.listen(
+        _showNotification,
+      );
+    }
+  }
+
   void startDemo() {
     _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
+    _notificationSubscription?.cancel();
+    _notificationSubscription = null;
     _client?.close();
     _client = null;
     homeName = 'Kōwhai House';
@@ -737,11 +782,14 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await stopBackgroundNotificationService();
     await _secureStorage.delete(key: _urlKey);
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _roomLabelsKey);
     await _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
+    await _notificationSubscription?.cancel();
+    _notificationSubscription = null;
     await _client?.close();
     _client = null;
     vacuums = [];
@@ -764,6 +812,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _vacuumSubscription?.cancel();
+    _notificationSubscription?.cancel();
     _client?.close();
     super.dispose();
   }

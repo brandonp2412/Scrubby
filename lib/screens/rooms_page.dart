@@ -49,11 +49,6 @@ class _RoomsPageState extends State<RoomsPage> {
     final powerModes = widget.state.vacuum.fanSpeeds.isEmpty
         ? const ['Quiet', 'Balanced', 'Turbo']
         : widget.state.vacuum.fanSpeeds;
-    final activeMode = powerModes.contains(mode)
-        ? mode!
-        : powerModes.contains(widget.state.vacuum.fanSpeed)
-        ? widget.state.vacuum.fanSpeed!
-        : powerModes.first;
     final labelsBySegment = {
       for (final label in widget.state.mapRoomLabels)
         if (label.segmentId != null) label.segmentId!: label,
@@ -136,7 +131,12 @@ class _RoomsPageState extends State<RoomsPage> {
                       .map(
                         (powerMode) => DropdownMenuItem(
                           value: powerMode,
-                          child: Text(powerMode),
+                          child: Text(
+                            powerMode,
+                            maxLines: 1,
+                            softWrap: false,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),

@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/app_state.dart';
+import 'core/notifications.dart';
 import 'screens/dashboard_shell.dart';
 import 'screens/login_screen.dart';
 import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LocalVacuumNotificationPresenter.instance.initialize();
+  await configureBackgroundNotificationService();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -29,15 +32,19 @@ class ScrubbyApp extends StatefulWidget {
 
 class _ScrubbyAppState extends State<ScrubbyApp> {
   final state = AppState();
+  late final _LifecycleObserver _lifecycleObserver;
 
   @override
   void initState() {
     super.initState();
+    _lifecycleObserver = _LifecycleObserver(state);
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
     state.initialize();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     state.dispose();
     super.dispose();
   }
@@ -60,6 +67,21 @@ class _ScrubbyAppState extends State<ScrubbyApp> {
         ),
       ),
     );
+  }
+}
+
+class _LifecycleObserver extends WidgetsBindingObserver {
+  _LifecycleObserver(this.state);
+
+  final AppState state;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState == AppLifecycleState.paused) {
+      state.enterBackground();
+    } else if (lifecycleState == AppLifecycleState.resumed) {
+      state.enterForeground();
+    }
   }
 }
 
