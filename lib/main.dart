@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import 'core/app_state.dart';
 import 'core/notifications.dart';
@@ -95,7 +96,7 @@ class _StartupScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cleaning_services_rounded, size: 48, color: fern),
+            Icon(Symbols.vacuum_2, size: 48, color: fern),
             SizedBox(height: 24),
             SizedBox.square(
               dimension: 24,

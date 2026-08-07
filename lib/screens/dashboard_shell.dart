@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
 import '../theme.dart';
@@ -153,12 +154,12 @@ class _TopBar extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: const BoxDecoration(
-                color: fern,
+                color: Colors.black,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
-                Icons.cleaning_services_rounded,
-                color: mint,
+                Symbols.vacuum_2,
+                color: Colors.white,
                 size: 19,
               ),
             ),
