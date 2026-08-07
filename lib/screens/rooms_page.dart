@@ -131,45 +131,19 @@ class _RoomsPageState extends State<RoomsPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final showIcons = constraints.maxWidth >= 440;
-                    Text label(String value) => Text(
-                      value,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.visible,
-                    );
-                    return SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<String>(
-                        segments: [
-                          for (
-                            var index = 0;
-                            index < powerModes.length;
-                            index++
-                          )
-                            ButtonSegment(
-                              value: powerModes[index],
-                              icon: showIcons
-                                  ? Icon(
-                                      index == 0
-                                          ? Icons.air_rounded
-                                          : index == powerModes.length - 1
-                                          ? Icons.bolt_rounded
-                                          : Icons.tune_rounded,
-                                    )
-                                  : null,
-                              label: label(powerModes[index]),
-                            ),
-                        ],
-                        selected: {activeMode},
-                        onSelectionChanged: (value) =>
-                            setState(() => mode = value.first),
-                        showSelectedIcon: false,
-                      ),
-                    );
-                  },
+                DropdownButtonFormField<String>(
+                  items: powerModes
+                      .map(
+                        (powerMode) => DropdownMenuItem(
+                          value: powerMode,
+                          child: Text(powerMode),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => setState(() {
+                    mode = value;
+                  }),
+                  initialValue: mode,
                 ),
               ],
             ),
