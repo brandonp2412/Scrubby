@@ -77,6 +77,24 @@ class VacuumSegment {
   );
 }
 
+class SegmentCleaningCapability {
+  const SegmentCleaningCapability({
+    required this.domain,
+    required this.service,
+    required this.segmentField,
+    this.minimumRepeats = 1,
+    this.maximumRepeats = 1,
+  });
+
+  final String domain;
+  final String service;
+  final String segmentField;
+  final int minimumRepeats;
+  final int maximumRepeats;
+
+  bool get supportsRepeats => maximumRepeats > minimumRepeats;
+}
+
 enum VacuumSettingKind { toggle, select, number, action }
 
 /// A configurable Home Assistant entity belonging to the vacuum's device.
@@ -156,6 +174,8 @@ class HomeAssistantSchedule {
     required this.enabled,
     this.fanSpeed,
     this.settings = const [],
+    this.segmentIds = const [],
+    this.cycles = 1,
   });
 
   final String id;
@@ -167,6 +187,8 @@ class HomeAssistantSchedule {
   final bool enabled;
   final String? fanSpeed;
   final List<VacuumSetting> settings;
+  final List<String> segmentIds;
+  final int cycles;
 }
 
 String _displayName(Object? friendlyName) {
@@ -676,6 +698,56 @@ class HomeAssistantClient {
     return settings;
   }
 
+  Future<SegmentCleaningCapability?> fetchSegmentCleaningCapability() async {
+    final response = await _httpClient
+        .get(Uri.parse('$baseUrl/api/services'), headers: _headers)
+        .timeout(const Duration(seconds: 12));
+    _requireSuccess(response, 'discover room-cleaning services');
+    final domains = jsonDecode(response.body) as List<dynamic>;
+    final candidates = <SegmentCleaningCapability>[];
+    for (final domainData in domains.whereType<Map<String, dynamic>>()) {
+      final domain = domainData['domain']?.toString() ?? '';
+      final services =
+          domainData['services'] as Map<String, dynamic>? ?? const {};
+      for (final entry in services.entries) {
+        if (!entry.key.toLowerCase().contains('clean_segment')) continue;
+        final definition = entry.value as Map<String, dynamic>? ?? const {};
+        final fields =
+            definition['fields'] as Map<String, dynamic>? ?? const {};
+        final segmentField = const [
+          'segment_ids',
+          'segments',
+          'segment_id',
+        ].where(fields.containsKey).firstOrNull;
+        if (segmentField == null) continue;
+        final repeatDefinition =
+            fields['repeats'] as Map<String, dynamic>? ?? const {};
+        final selector =
+            repeatDefinition['selector'] as Map<String, dynamic>? ?? const {};
+        final number = selector['number'] as Map<String, dynamic>? ?? const {};
+        candidates.add(
+          SegmentCleaningCapability(
+            domain: domain,
+            service: entry.key,
+            segmentField: segmentField,
+            minimumRepeats: (number['min'] as num?)?.toInt() ?? 1,
+            maximumRepeats: (number['max'] as num?)?.toInt() ?? 1,
+          ),
+        );
+      }
+    }
+    candidates.sort((a, b) {
+      int score(SegmentCleaningCapability item) {
+        if (item.domain == 'dreame_vacuum') return 0;
+        if (item.domain == 'vacuum') return 1;
+        return 2;
+      }
+
+      return score(a).compareTo(score(b));
+    });
+    return candidates.firstOrNull;
+  }
+
   String _settingName(String rawName, String vacuumEntityId) {
     var name = rawName.trim();
     final vacuumName = _states[vacuumEntityId]?['attributes']?['friendly_name']
@@ -1010,7 +1082,29 @@ class HomeAssistantClient {
     required String vacuumEntityId,
     String? fanSpeed,
     List<VacuumSetting> settings = const [],
+    List<String> segmentIds = const [],
+    int cycles = 1,
   }) async {
+    final segmentCapability = segmentIds.isEmpty
+        ? null
+        : await fetchSegmentCleaningCapability();
+    if (segmentIds.isNotEmpty && segmentCapability == null) {
+      throw Exception(
+        'Home Assistant does not expose a segment-cleaning service for this vacuum.',
+      );
+    }
+    final rawSegmentIds = segmentIds
+        .map((id) {
+          final raw = id.contains('_') ? id.split('_').last : id;
+          return int.tryParse(raw) ?? raw;
+        })
+        .toList(growable: false);
+    final supportedCycles = segmentCapability == null
+        ? 1
+        : cycles.clamp(
+            segmentCapability.minimumRepeats,
+            segmentCapability.maximumRepeats,
+          );
     final response = await _httpClient
         .post(
           Uri.parse('$baseUrl/api/config/automation/config/$id'),
@@ -1028,6 +1122,8 @@ class HomeAssistantClient {
               },
             ],
             'action': [
+              for (final setting in settings.where(_isCleanGeniusSetting))
+                _scheduleSettingAction(setting),
               if (fanSpeed != null)
                 {
                   'alias': 'Set suction power',
@@ -1035,11 +1131,27 @@ class HomeAssistantClient {
                   'target': {'entity_id': vacuumEntityId},
                   'data': {'fan_speed': fanSpeed},
                 },
-              for (final setting in settings) _scheduleSettingAction(setting),
-              {
-                'service': 'vacuum.start',
-                'target': {'entity_id': vacuumEntityId},
-              },
+              for (final setting in settings.where(
+                (setting) => !_isCleanGeniusSetting(setting),
+              ))
+                _scheduleSettingAction(setting),
+              if (segmentCapability == null)
+                {
+                  'service': 'vacuum.start',
+                  'target': {'entity_id': vacuumEntityId},
+                }
+              else
+                {
+                  'alias': 'Clean selected rooms',
+                  'service':
+                      '${segmentCapability.domain}.${segmentCapability.service}',
+                  'target': {'entity_id': vacuumEntityId},
+                  'data': {
+                    segmentCapability.segmentField: rawSegmentIds,
+                    if (segmentCapability.supportsRepeats)
+                      'repeats': supportedCycles,
+                  },
+                },
             ],
             'mode': 'single',
           }),
@@ -1098,15 +1210,32 @@ class HomeAssistantClient {
         .toList(growable: false);
     final actions =
         (config['action'] ?? config['actions']) as List<dynamic>? ?? const [];
-    final vacuumAction = actions.whereType<Map<String, dynamic>>().firstWhere(
-      (action) =>
-          action['service'] == 'vacuum.start' ||
-          action['action'] == 'vacuum.start',
-      orElse: () => const {},
-    );
+    final vacuumAction = actions.whereType<Map<String, dynamic>>().firstWhere((
+      action,
+    ) {
+      final service = (action['service'] ?? action['action'])?.toString();
+      return service == 'vacuum.start' ||
+          (service?.toLowerCase().contains('clean_segment') ?? false);
+    }, orElse: () => const {});
     final target = vacuumAction['target'] as Map<String, dynamic>? ?? const {};
     final data = vacuumAction['data'] as Map<String, dynamic>? ?? const {};
     final targetEntity = target['entity_id'] ?? data['entity_id'];
+    final segmentValues = const ['segment_ids', 'segments', 'segment_id']
+        .map((field) => data[field])
+        .firstWhere((value) => value != null, orElse: () => null);
+    final segmentIds = switch (segmentValues) {
+      List<dynamic> values => values.map((value) => value.toString()).toList(),
+      null => const <String>[],
+      Object value => <String>[value.toString()],
+    };
+    final rawRepeats = data['repeats'];
+    final cycles = switch (rawRepeats) {
+      num value => value.toInt(),
+      List<dynamic> values when values.isNotEmpty =>
+        int.tryParse(values.first.toString()) ?? 1,
+      Object value => int.tryParse(value.toString()) ?? 1,
+      _ => 1,
+    };
 
     String? fanSpeed;
     final settings = <VacuumSetting>[];
@@ -1149,6 +1278,8 @@ class HomeAssistantClient {
       enabled: enabled,
       fanSpeed: fanSpeed,
       settings: settings,
+      segmentIds: segmentIds,
+      cycles: cycles,
     );
   }
 
@@ -1176,6 +1307,16 @@ class HomeAssistantClient {
         'Button actions cannot be added to a cleaning schedule.',
       ),
     };
+  }
+
+  bool _isCleanGeniusSetting(VacuumSetting setting) {
+    final searchable = '${setting.entityId} ${setting.name}'
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+    return (searchable.contains('cleangenius') ||
+            searchable.contains('clean genius')) &&
+        !searchable.contains('cleangenius mode') &&
+        !searchable.contains('clean genius mode');
   }
 
   VacuumSetting? _parseScheduleSetting(

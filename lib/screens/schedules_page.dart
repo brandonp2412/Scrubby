@@ -46,6 +46,7 @@ class SchedulesPage extends StatelessWidget {
               _ScheduleCard(
                 schedule: state.schedules[i],
                 vacuumName: state.vacuumName(state.schedules[i].vacuumEntityId),
+                roomSummary: state.scheduleRooms(state.schedules[i]),
                 busy: state.busyScheduleIds.contains(state.schedules[i].id),
                 onTap: () => _edit(context, i),
                 onChanged: (value) => state.toggleSchedule(i, value),
@@ -161,6 +162,7 @@ class _ScheduleCard extends StatelessWidget {
   const _ScheduleCard({
     required this.schedule,
     required this.vacuumName,
+    required this.roomSummary,
     required this.busy,
     required this.onTap,
     required this.onChanged,
@@ -168,6 +170,7 @@ class _ScheduleCard extends StatelessWidget {
   });
   final CleaningSchedule schedule;
   final String vacuumName;
+  final String roomSummary;
   final bool busy;
   final VoidCallback onTap;
   final ValueChanged<bool> onChanged;
@@ -236,7 +239,7 @@ class _ScheduleCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          'Whole home · $vacuumName',
+                          '$roomSummary · $vacuumName',
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         if (schedule.fanSpeed != null ||
@@ -246,6 +249,8 @@ class _ScheduleCard extends StatelessWidget {
                             [
                               if (schedule.fanSpeed != null) schedule.fanSpeed!,
                               ...schedule.settings.map((item) => item.value),
+                              if (schedule.cycles > 1)
+                                '${schedule.cycles} cycles',
                             ].join(' · '),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -295,6 +300,8 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
   late final Set<int> weekdays;
   late String vacuumEntityId;
   String? fanSpeed;
+  late final Set<String> selectedSegments;
+  late int cycles;
   final Map<String, String?> settingValues = {};
 
   bool get isEditing => widget.schedule != null;
@@ -322,9 +329,12 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
         : schedule.weekdays.toSet();
     vacuumEntityId = schedule?.vacuumEntityId ?? widget.state.vacuum.entityId;
     fanSpeed = schedule?.fanSpeed;
+    selectedSegments = schedule?.segmentIds.toSet() ?? <String>{};
+    cycles = schedule?.cycles ?? 1;
     for (final setting in schedule?.settings ?? const <VacuumSetting>[]) {
       settingValues[setting.entityId] = setting.value;
     }
+    _seedDefaults(existing: schedule != null);
   }
 
   VacuumEntity get selectedVacuum => widget.state.vacuums.firstWhere(
@@ -332,23 +342,95 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
     orElse: () => widget.state.vacuum,
   );
 
-  List<VacuumSetting> get scheduleSettings {
-    final settings = widget.state
-        .settingsForVacuum(vacuumEntityId)
-        .where(
-          (setting) =>
-              setting.available &&
-              (setting.kind == VacuumSettingKind.select ||
-                  setting.kind == VacuumSettingKind.toggle) &&
-              const {
-                'Cleaning',
-                'Mopping',
-                'Carpets',
-              }.contains(setting.category),
-        )
-        .toList();
-    settings.sort((a, b) => a.name.compareTo(b.name));
-    return settings;
+  List<VacuumSetting> get availableSelects => widget.state
+      .settingsForVacuum(vacuumEntityId)
+      .where(
+        (setting) =>
+            setting.available &&
+            setting.kind == VacuumSettingKind.select &&
+            setting.options.isNotEmpty,
+      )
+      .toList(growable: false);
+
+  String _searchable(VacuumSetting setting) =>
+      '${setting.entityId} ${setting.name}'.toLowerCase().replaceAll(
+        RegExp(r'[^a-z0-9]+'),
+        ' ',
+      );
+
+  VacuumSetting? get cleanGeniusSetting {
+    final matches = availableSelects.where((setting) {
+      final value = _searchable(setting);
+      return (value.contains('cleangenius') ||
+              value.contains('clean genius')) &&
+          !value.contains('cleangenius mode') &&
+          !value.contains('clean genius mode') &&
+          setting.options.any(_isOff);
+    }).toList();
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  VacuumSetting? _exactSetting(String name) {
+    final matches = availableSelects.where((setting) {
+      final normalizedName = setting.name
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+          .trim();
+      return normalizedName == name;
+    }).toList();
+    return matches.isEmpty ? null : matches.first;
+  }
+
+  VacuumSetting? get cleaningModeSetting => _exactSetting('cleaning mode');
+  VacuumSetting? get cleaningRouteSetting => _exactSetting('cleaning route');
+  SegmentCleaningCapability? get segmentCapability =>
+      widget.state.segmentCleaningCapabilityFor(vacuumEntityId);
+  List<VacuumSegment> get segments =>
+      widget.state.segmentsForVacuum(vacuumEntityId);
+
+  bool _isOff(String value) => value.toLowerCase().trim() == 'off';
+
+  String _selectedValue(VacuumSetting setting) {
+    final selected = settingValues[setting.entityId];
+    if (selected != null && setting.options.contains(selected)) return selected;
+    if (setting.options.contains(setting.value)) return setting.value;
+    return setting.options.first;
+  }
+
+  bool get usesCleanGenius {
+    final setting = cleanGeniusSetting;
+    return setting != null && !_isOff(_selectedValue(setting));
+  }
+
+  bool get customModeUsesSuction {
+    final setting = cleaningModeSetting;
+    if (setting == null) return true;
+    final mode = _selectedValue(
+      setting,
+    ).toLowerCase().replaceAll('_', ' ').trim();
+    return mode != 'mop' && mode != 'mopping';
+  }
+
+  void _seedDefaults({required bool existing}) {
+    final cleanGenius = cleanGeniusSetting;
+    if (cleanGenius != null && settingValues[cleanGenius.entityId] == null) {
+      settingValues[cleanGenius.entityId] = existing
+          ? cleanGenius.options.firstWhere(
+              _isOff,
+              orElse: () => cleanGenius.options.first,
+            )
+          : cleanGenius.value;
+    }
+    if (!existing && fanSpeed == null) {
+      fanSpeed = selectedVacuum.fanSpeeds.contains(selectedVacuum.fanSpeed)
+          ? selectedVacuum.fanSpeed
+          : selectedVacuum.fanSpeeds.firstOrNull;
+    }
+    for (final setting in [cleaningModeSetting, cleaningRouteSetting]) {
+      if (setting != null && settingValues[setting.entityId] == null) {
+        settingValues[setting.entityId] = setting.value;
+      }
+    }
   }
 
   @override
@@ -359,6 +441,14 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cleanGenius = cleanGeniusSetting;
+    final cleaningMode = cleaningModeSetting;
+    final cleaningRoute = cleaningRouteSetting;
+    final canChooseRooms = segmentCapability != null && segments.isNotEmpty;
+    final validSegmentIds = segments.map((segment) => segment.id).toSet();
+    selectedSegments.retainAll(validSegmentIds);
+    final maximumCycles = segmentCapability?.maximumRepeats ?? 1;
+    cycles = cycles.clamp(1, maximumCycles);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         24,
@@ -450,55 +540,135 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                         vacuumEntityId = value;
                         fanSpeed = null;
                         settingValues.clear();
+                        selectedSegments.clear();
+                        cycles = 1;
                       });
                       await widget.state.refreshVacuumSettingsFor(value);
-                      if (mounted) setState(() {});
+                      if (mounted) {
+                        setState(() => _seedDefaults(existing: false));
+                      }
                     }
                   },
                 ),
               ],
-              if (selectedVacuum.fanSpeeds.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  key: ValueKey('suction-$vacuumEntityId'),
-                  initialValue: fanSpeed,
-                  decoration: const InputDecoration(labelText: 'Suction power'),
-                  hint: const Text('Use current'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: '__current__',
-                      child: Text('Use current'),
+              if (canChooseRooms) ...[
+                const SizedBox(height: 20),
+                Text('Rooms', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  'Choose individual rooms, or leave Whole home selected.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilterChip(
+                      label: const Text('Whole home'),
+                      selected: selectedSegments.isEmpty,
+                      onSelected: (_) =>
+                          setState(() => selectedSegments.clear()),
                     ),
-                    for (final speed in selectedVacuum.fanSpeeds)
-                      DropdownMenuItem(value: speed, child: Text(speed)),
+                    for (final segment in segments)
+                      FilterChip(
+                        label: Text(
+                          widget.state.segmentNameFor(vacuumEntityId, segment),
+                        ),
+                        selected: selectedSegments.contains(segment.id),
+                        onSelected: (selected) => setState(() {
+                          if (selected) {
+                            selectedSegments.add(segment.id);
+                          } else {
+                            selectedSegments.remove(segment.id);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ],
+              if (cleanGenius != null) ...[
+                const SizedBox(height: 20),
+                Text(
+                  'Cleaning plan',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('cleangenius-$vacuumEntityId'),
+                  initialValue: _selectedValue(cleanGenius),
+                  decoration: const InputDecoration(labelText: 'CleanGenius'),
+                  items: [
+                    for (final option in cleanGenius.options)
+                      DropdownMenuItem(
+                        value: option,
+                        child: Text(_isOff(option) ? 'Custom' : option),
+                      ),
                   ],
                   onChanged: (value) => setState(
-                    () => fanSpeed = value == '__current__' ? null : value,
+                    () => settingValues[cleanGenius.entityId] = value,
                   ),
                 ),
               ],
-              if (scheduleSettings.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                Text(
-                  'Cleaning preferences',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Choose what this schedule should apply before it starts.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                for (final setting in scheduleSettings) ...[
-                  _ScheduleSettingField(
-                    key: ValueKey(setting.entityId),
-                    setting: setting,
-                    value: settingValues[setting.entityId],
-                    onChanged: (value) =>
-                        setState(() => settingValues[setting.entityId] = value),
+              if (!usesCleanGenius && cleaningMode != null) ...[
+                const SizedBox(height: 14),
+                _ScheduleSettingField(
+                  key: ValueKey(cleaningMode.entityId),
+                  setting: cleaningMode,
+                  value: _selectedValue(cleaningMode),
+                  valueLabel: _cleaningModeLabel,
+                  onChanged: (value) => setState(
+                    () => settingValues[cleaningMode.entityId] = value,
                   ),
-                  const SizedBox(height: 12),
-                ],
+                ),
+              ],
+              if (!usesCleanGenius &&
+                  customModeUsesSuction &&
+                  selectedVacuum.fanSpeeds.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                DropdownButtonFormField<String>(
+                  key: ValueKey('suction-$vacuumEntityId'),
+                  initialValue: selectedVacuum.fanSpeeds.contains(fanSpeed)
+                      ? fanSpeed
+                      : selectedVacuum.fanSpeeds.first,
+                  decoration: const InputDecoration(labelText: 'Suction power'),
+                  items: [
+                    for (final speed in selectedVacuum.fanSpeeds)
+                      DropdownMenuItem(value: speed, child: Text(speed)),
+                  ],
+                  onChanged: (value) => setState(() => fanSpeed = value),
+                ),
+              ],
+              if (!usesCleanGenius && cleaningRoute != null) ...[
+                const SizedBox(height: 14),
+                _ScheduleSettingField(
+                  key: ValueKey(cleaningRoute.entityId),
+                  setting: cleaningRoute,
+                  value: _selectedValue(cleaningRoute),
+                  onChanged: (value) => setState(
+                    () => settingValues[cleaningRoute.entityId] = value,
+                  ),
+                ),
+              ],
+              if (!usesCleanGenius &&
+                  selectedSegments.isNotEmpty &&
+                  (segmentCapability?.supportsRepeats ?? false)) ...[
+                const SizedBox(height: 14),
+                DropdownButtonFormField<int>(
+                  initialValue: cycles,
+                  decoration: const InputDecoration(labelText: 'Cycles'),
+                  items: [
+                    for (var count = 1; count <= maximumCycles; count++)
+                      DropdownMenuItem(
+                        value: count,
+                        child: Text(
+                          '$count ${count == 1 ? 'cycle' : 'cycles'}',
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => cycles = value ?? cycles),
+                ),
               ],
               const SizedBox(height: 20),
               SizedBox(
@@ -520,13 +690,24 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                           '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}',
                       vacuumEntityId: vacuumEntityId,
                       enabled: widget.schedule?.enabled ?? true,
-                      fanSpeed: fanSpeed,
+                      fanSpeed: usesCleanGenius || !customModeUsesSuction
+                          ? null
+                          : fanSpeed,
+                      segmentIds: selectedSegments.toList(growable: false),
+                      cycles: selectedSegments.isEmpty ? 1 : cycles,
                       settings: [
-                        for (final setting in scheduleSettings)
-                          if (settingValues[setting.entityId] != null)
-                            setting.copyWithValue(
-                              settingValues[setting.entityId]!,
-                            ),
+                        if (cleanGenius != null)
+                          cleanGenius.copyWithValue(
+                            _selectedValue(cleanGenius),
+                          ),
+                        if (!usesCleanGenius && cleaningMode != null)
+                          cleaningMode.copyWithValue(
+                            _selectedValue(cleaningMode),
+                          ),
+                        if (!usesCleanGenius && cleaningRoute != null)
+                          cleaningRoute.copyWithValue(
+                            _selectedValue(cleaningRoute),
+                          ),
                       ],
                     ),
                   ),
@@ -539,6 +720,21 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       ),
     );
   }
+
+  String _cleaningModeLabel(String value) {
+    final normalized = value.toLowerCase().replaceAll('_', ' ').trim();
+    if (normalized == 'sweeping' || normalized == 'vacuuming') return 'Vacuum';
+    if (normalized == 'mopping') return 'Mop';
+    if (normalized == 'sweeping and mopping' ||
+        normalized == 'vacuum and mop') {
+      return 'Vacuum & mop';
+    }
+    if (normalized == 'mopping after sweeping' ||
+        normalized == 'mop after vacuum') {
+      return 'Mop after vacuum';
+    }
+    return value;
+  }
 }
 
 class _ScheduleSettingField extends StatelessWidget {
@@ -547,11 +743,13 @@ class _ScheduleSettingField extends StatelessWidget {
     required this.setting,
     required this.value,
     required this.onChanged,
+    this.valueLabel,
   });
 
   final VacuumSetting setting;
   final String? value;
   final ValueChanged<String?> onChanged;
+  final String Function(String value)? valueLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -564,23 +762,18 @@ class _ScheduleSettingField extends StatelessWidget {
     return DropdownButtonFormField<String>(
       initialValue: value,
       decoration: InputDecoration(labelText: setting.name),
-      hint: const Text('Use current'),
       items: [
-        const DropdownMenuItem(
-          value: '__current__',
-          child: Text('Use current'),
-        ),
         for (final choice in choices)
           DropdownMenuItem(
             value: choice,
             child: Text(
               setting.kind == VacuumSettingKind.toggle
                   ? (choice == 'on' ? 'On' : 'Off')
-                  : choice,
+                  : (valueLabel?.call(choice) ?? choice),
             ),
           ),
       ],
-      onChanged: (next) => onChanged(next == '__current__' ? null : next),
+      onChanged: onChanged,
     );
   }
 }

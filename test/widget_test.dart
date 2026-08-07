@@ -252,6 +252,76 @@ void main() {
     expect(reloaded, isTrue);
   });
 
+  test('schedules selected Dreame rooms with supported cycles', () async {
+    late List<dynamic> actions;
+    final client = HomeAssistantClient(
+      'http://homeassistant.local:8123',
+      'test-token',
+      httpClient: MockClient((request) async {
+        if (request.method == 'GET' && request.url.path == '/api/services') {
+          return http.Response(
+            jsonEncode([
+              {
+                'domain': 'dreame_vacuum',
+                'services': {
+                  'vacuum_clean_segment': {
+                    'fields': {
+                      'segments': {},
+                      'repeats': {
+                        'selector': {
+                          'number': {'min': 1, 'max': 3},
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            ]),
+            HttpStatus.ok,
+          );
+        }
+        if (request.url.path == '/api/config/automation/config/scrubby_rooms') {
+          actions =
+              (jsonDecode(request.body) as Map<String, dynamic>)['action']
+                  as List<dynamic>;
+          return http.Response('{"result":"ok"}', HttpStatus.ok);
+        }
+        expect(request.url.path, '/api/services/automation/reload');
+        return http.Response('[]', HttpStatus.ok);
+      }),
+    );
+    addTearDown(client.close);
+
+    await client.createScrubbySchedule(
+      id: 'scrubby_rooms',
+      title: 'Kitchen and hall',
+      time: '11:00',
+      weekdays: [DateTime.monday],
+      vacuumEntityId: 'vacuum.dreame',
+      segmentIds: const ['2', '4'],
+      cycles: 2,
+      fanSpeed: 'Turbo',
+      settings: const [
+        VacuumSetting(
+          entityId: 'select.dreame_cleangenius',
+          name: 'CleanGenius',
+          kind: VacuumSettingKind.select,
+          value: 'Off',
+        ),
+      ],
+    );
+
+    expect(actions.map((action) => action['service']), [
+      'select.select_option',
+      'vacuum.set_fan_speed',
+      'dreame_vacuum.vacuum_clean_segment',
+    ]);
+    expect(actions.last['data'], {
+      'segments': [2, 4],
+      'repeats': 2,
+    });
+  });
+
   test('adds selected cleaning preferences before a scheduled clean', () async {
     late List<dynamic> actions;
     final client = HomeAssistantClient(

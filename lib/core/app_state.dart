@@ -17,6 +17,8 @@ class CleaningSchedule {
     this.enabled = true,
     this.fanSpeed,
     this.settings = const [],
+    this.segmentIds = const [],
+    this.cycles = 1,
   });
 
   final String id;
@@ -28,6 +30,8 @@ class CleaningSchedule {
   final bool enabled;
   final String? fanSpeed;
   final List<VacuumSetting> settings;
+  final List<String> segmentIds;
+  final int cycles;
 
   String get days {
     if (weekdays.length == 7) return 'EVERY DAY';
@@ -46,6 +50,8 @@ class CleaningSchedule {
         enabled: enabled ?? this.enabled,
         fanSpeed: fanSpeed,
         settings: settings,
+        segmentIds: segmentIds,
+        cycles: cycles,
       );
 
   factory CleaningSchedule.fromHomeAssistant(HomeAssistantSchedule schedule) =>
@@ -59,6 +65,8 @@ class CleaningSchedule {
         enabled: schedule.enabled,
         fanSpeed: schedule.fanSpeed,
         settings: schedule.settings,
+        segmentIds: schedule.segmentIds,
+        cycles: schedule.cycles,
       );
 }
 
@@ -128,6 +136,8 @@ class AppState extends ChangeNotifier {
   final Map<String, List<MapRoomLabel>> _mapRoomLabels = {};
   final Map<String, List<VacuumSegment>> _vacuumSegments = {};
   final Map<String, List<VacuumSetting>> _vacuumSettings = {};
+  final Map<String, SegmentCleaningCapability> _segmentCleaningCapabilities =
+      {};
   String? roomCapabilityError;
   bool settingsLoading = false;
   String? settingsError;
@@ -147,6 +157,33 @@ class AppState extends ChangeNotifier {
       _vacuumSettings[vacuum.entityId] ?? const [];
   List<VacuumSetting> settingsForVacuum(String entityId) =>
       _vacuumSettings[entityId] ?? const [];
+  SegmentCleaningCapability? segmentCleaningCapabilityFor(String entityId) =>
+      _segmentCleaningCapabilities[entityId];
+  List<VacuumSegment> segmentsForVacuum(String entityId) =>
+      _vacuumSegments[entityId] ?? const [];
+  String segmentNameFor(String entityId, VacuumSegment segment) {
+    final labels = _mapRoomLabels[entityId] ?? const [];
+    final match = labels.where((label) => label.segmentId == segment.id);
+    return match.isEmpty ? segment.name : match.first.name;
+  }
+
+  String scheduleRooms(CleaningSchedule schedule) {
+    if (schedule.segmentIds.isEmpty) return 'Whole home';
+    final labelsBySegment = {
+      for (final label in _mapRoomLabels[schedule.vacuumEntityId] ?? const [])
+        if (label.segmentId != null) label.segmentId!: label.name,
+    };
+    final segmentsById = {
+      for (final segment
+          in _vacuumSegments[schedule.vacuumEntityId] ?? const [])
+        segment.id: segment.name,
+    };
+    final names = schedule.segmentIds
+        .map((id) => labelsBySegment[id] ?? segmentsById[id] ?? 'Room $id')
+        .toList(growable: false);
+    if (names.length <= 2) return names.join(', ');
+    return '${names.take(2).join(', ')} +${names.length - 2}';
+  }
 
   Future<void> initialize() async {
     try {
@@ -236,6 +273,10 @@ class AppState extends ChangeNotifier {
     ];
     schedules.clear();
     scheduleError = null;
+    _mapRoomLabels.clear();
+    _vacuumSegments.clear();
+    _vacuumSettings.clear();
+    _segmentCleaningCapabilities.clear();
     _mapRoomLabels[vacuum.entityId] = [
       MapRoomLabel(
         id: 'demo-kitchen',
@@ -272,13 +313,27 @@ class AppState extends ChangeNotifier {
       VacuumSegment(id: '3', name: 'Room 3'),
       VacuumSegment(id: '4', name: 'Room 4'),
     ];
+    _segmentCleaningCapabilities[vacuum.entityId] =
+        const SegmentCleaningCapability(
+          domain: 'dreame_vacuum',
+          service: 'vacuum_clean_segment',
+          segmentField: 'segments',
+          maximumRepeats: 3,
+        );
     _vacuumSettings[vacuum.entityId] = [
+      const VacuumSetting(
+        entityId: 'select.orbit_cleangenius',
+        name: 'CleanGenius',
+        kind: VacuumSettingKind.select,
+        value: 'Off',
+        options: ['Off', 'Routine cleaning', 'Deep cleaning'],
+      ),
       const VacuumSetting(
         entityId: 'select.orbit_cleaning_mode',
         name: 'Cleaning mode',
         kind: VacuumSettingKind.select,
-        value: 'Sweeping and mopping',
-        options: ['Sweeping', 'Mopping', 'Sweeping and mopping'],
+        value: 'Vacuum and mop',
+        options: ['Vacuum', 'Mop', 'Vacuum and mop', 'Mop after vacuum'],
       ),
       const VacuumSetting(
         entityId: 'select.orbit_carpet_cleaning_mode',
@@ -500,13 +555,23 @@ class AppState extends ChangeNotifier {
   Future<void> _loadVacuumSegments() async {
     roomCapabilityError = null;
     _vacuumSegments.clear();
+    _segmentCleaningCapabilities.clear();
     final client = _client;
     if (client == null) return;
+    SegmentCleaningCapability? capability;
+    try {
+      capability = await client.fetchSegmentCleaningCapability();
+    } catch (error) {
+      roomCapabilityError = _message(error);
+    }
     for (final item in vacuums.where((item) => item.supportsAreaCleaning)) {
       try {
         _vacuumSegments[item.entityId] = await client.fetchVacuumSegments(
           item.entityId,
         );
+        if (capability != null) {
+          _segmentCleaningCapabilities[item.entityId] = capability;
+        }
       } catch (error) {
         roomCapabilityError = _message(error);
       }
@@ -585,6 +650,8 @@ class AppState extends ChangeNotifier {
         vacuumEntityId: schedule.vacuumEntityId,
         fanSpeed: schedule.fanSpeed,
         settings: schedule.settings,
+        segmentIds: schedule.segmentIds,
+        cycles: schedule.cycles,
       );
       await refreshSchedules();
       return true;
@@ -617,6 +684,8 @@ class AppState extends ChangeNotifier {
         vacuumEntityId: schedule.vacuumEntityId,
         fanSpeed: schedule.fanSpeed,
         settings: schedule.settings,
+        segmentIds: schedule.segmentIds,
+        cycles: schedule.cycles,
       );
       await refreshSchedules();
       return true;
@@ -679,6 +748,8 @@ class AppState extends ChangeNotifier {
     selectedVacuum = 0;
     _mapRoomLabels.clear();
     _vacuumSegments.clear();
+    _vacuumSettings.clear();
+    _segmentCleaningCapabilities.clear();
     schedules.clear();
     scheduleError = null;
     savedUrl = null;
