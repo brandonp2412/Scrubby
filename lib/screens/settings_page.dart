@@ -5,16 +5,50 @@ import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.state});
 
   final AppState state;
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  AppState get state => widget.state;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(VacuumSetting setting) {
+    if (_query.isEmpty) return true;
+    final searchable = [
+      setting.name,
+      setting.category,
+      setting.entityId,
+      setting.value,
+      ...setting.options,
+    ].join(' ').toLowerCase();
+    return searchable.contains(_query);
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _query = '');
+  }
 
   @override
   Widget build(BuildContext context) {
     final groups = <String, List<VacuumSetting>>{};
     final unavailableSettings = <VacuumSetting>[];
     for (final setting in state.vacuumSettings) {
+      if (!_matchesSearch(setting)) continue;
       if (!setting.available) {
         unavailableSettings.add(setting);
         continue;
@@ -44,12 +78,32 @@ class SettingsPage extends StatelessWidget {
               onRetry: state.refreshVacuumSettings,
             )
           else if (groups.isEmpty && unavailableSettings.isEmpty)
-            _EmptySettings(
-              message:
-                  'Home Assistant did not expose any configurable entities for this robot. Enable its switch, select, number, and button entities in Home Assistant, then refresh.',
-              onRetry: state.refreshVacuumSettings,
-            )
+            if (_query.isEmpty)
+              _EmptySettings(
+                message:
+                    'Home Assistant did not expose any configurable entities for this robot. Enable its switch, select, number, and button entities in Home Assistant, then refresh.',
+                onRetry: state.refreshVacuumSettings,
+              )
+            else ...[
+              _SettingsSearchField(
+                controller: _searchController,
+                query: _query,
+                onChanged: (value) =>
+                    setState(() => _query = value.trim().toLowerCase()),
+                onClear: _clearSearch,
+              ),
+              const SizedBox(height: 24),
+              _NoSearchResults(query: _searchController.text.trim()),
+            ]
           else ...[
+            _SettingsSearchField(
+              controller: _searchController,
+              query: _query,
+              onChanged: (value) =>
+                  setState(() => _query = value.trim().toLowerCase()),
+              onClear: _clearSearch,
+            ),
+            const SizedBox(height: 24),
             if (state.settingsError != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 16),
@@ -97,8 +151,8 @@ class SettingsPage extends StatelessWidget {
               SurfaceCard(
                 padding: EdgeInsets.zero,
                 child: ExpansionTile(
-                  key: const ValueKey('unavailable-settings'),
-                  initiallyExpanded: false,
+                  key: ValueKey('unavailable-settings-$_query'),
+                  initiallyExpanded: _query.isNotEmpty,
                   shape: const Border(),
                   collapsedShape: const Border(),
                   leading: const Icon(Icons.visibility_off_outlined),
@@ -165,6 +219,59 @@ class SettingsPage extends StatelessWidget {
     'Care & maintenance' => Icons.build_outlined,
     _ => Icons.tune_rounded,
   };
+}
+
+class _SettingsSearchField extends StatelessWidget {
+  const _SettingsSearchField({
+    required this.controller,
+    required this.query,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final TextEditingController controller;
+  final String query;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    key: const ValueKey('settings-search'),
+    controller: controller,
+    onChanged: onChanged,
+    textInputAction: TextInputAction.search,
+    decoration: InputDecoration(
+      hintText: 'Search settings',
+      prefixIcon: const Icon(Icons.search_rounded),
+      suffixIcon: query.isEmpty
+          ? null
+          : IconButton(
+              tooltip: 'Clear search',
+              onPressed: onClear,
+              icon: const Icon(Icons.close_rounded),
+            ),
+      border: const OutlineInputBorder(),
+    ),
+  );
+}
+
+class _NoSearchResults extends StatelessWidget {
+  const _NoSearchResults({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) => SurfaceCard(
+    child: Center(
+      child: Column(
+        children: [
+          const Icon(Icons.search_off_rounded, size: 38, color: fern),
+          const SizedBox(height: 12),
+          Text('No settings match “$query”.', textAlign: TextAlign.center),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SettingTile extends StatelessWidget {

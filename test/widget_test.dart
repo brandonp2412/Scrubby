@@ -776,6 +776,13 @@ void main() {
         ),
       );
 
+      expect(find.byTooltip('Label a room'), findsNothing);
+      expect(find.byTooltip('Zoom in'), findsNothing);
+      await tester.tap(find.bySemanticsLabel('Open map full screen'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Orbit map'), findsOneWidget);
+      expect(find.byTooltip('Zoom in'), findsOneWidget);
       await tester.tap(find.byTooltip('Label a room'));
       await tester.pump();
       await tester.tap(find.text('Tap inside a room to label it'));
@@ -921,6 +928,55 @@ void main() {
 
     expect(find.text('Off-peak charging'), findsOneWidget);
     expect(find.text('Currently unavailable'), findsOneWidget);
+  });
+
+  testWidgets('searches settings and clears the query', (
+    WidgetTester tester,
+  ) async {
+    final state = _SettingsTestState([
+      const VacuumSetting(
+        entityId: 'switch.orbit_carpet_boost',
+        name: 'Carpet boost',
+        kind: VacuumSettingKind.toggle,
+        value: 'on',
+      ),
+      const VacuumSetting(
+        entityId: 'select.orbit_water_volume',
+        name: 'Water volume',
+        kind: VacuumSettingKind.select,
+        value: 'Medium',
+        options: ['Low', 'Medium', 'High'],
+      ),
+    ])..startDemo();
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SettingsPage(state: state)),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey('settings-search')), findsOneWidget);
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search')),
+      'water',
+    );
+    await tester.pump();
+
+    expect(find.text('Water volume'), findsOneWidget);
+    expect(find.text('Carpet boost'), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search')),
+      'missing',
+    );
+    await tester.pump();
+    expect(find.text('No settings match “missing”.'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump();
+    expect(find.text('Water volume'), findsOneWidget);
+    expect(find.text('Carpet boost'), findsOneWidget);
   });
 }
 

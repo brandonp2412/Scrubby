@@ -500,9 +500,10 @@ class _StatusColumn extends StatelessWidget {
 }
 
 class _HomeMapCard extends StatefulWidget {
-  const _HomeMapCard({required this.state});
+  const _HomeMapCard({required this.state, this.fullScreen = false});
 
   final AppState state;
+  final bool fullScreen;
 
   @override
   State<_HomeMapCard> createState() => _HomeMapCardState();
@@ -522,6 +523,14 @@ class _HomeMapCardState extends State<_HomeMapCard> {
     final current = _transformation.value.getMaxScaleOnAxis();
     final target = (current * factor).clamp(1.0, 5.0);
     _transformation.value = Matrix4.diagonal3Values(target, target, 1);
+  }
+
+  void _openFullScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => _FullScreenMap(state: widget.state),
+      ),
+    );
   }
 
   Future<void> _addLabel(TapUpDetails details, Size size) async {
@@ -583,7 +592,7 @@ class _HomeMapCardState extends State<_HomeMapCard> {
   @override
   Widget build(BuildContext context) {
     final map = widget.state.vacuum.mapImage;
-    return SurfaceCard(
+    final card = SurfaceCard(
       padding: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
@@ -601,6 +610,32 @@ class _HomeMapCardState extends State<_HomeMapCard> {
             : LayoutBuilder(
                 builder: (context, constraints) {
                   final size = constraints.biggest;
+                  if (!widget.fullScreen) {
+                    return Stack(
+                      children: [
+                        Positioned.fill(
+                          child: Image.memory(
+                            map,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                            gaplessPlayback: true,
+                          ),
+                        ),
+                        for (final label in widget.state.mapRoomLabels)
+                          Positioned(
+                            left: label.x * size.width,
+                            top: label.y * size.height,
+                            child: FractionalTranslation(
+                              translation: const Offset(-0.5, -0.5),
+                              child: Chip(
+                                label: Text(label.name),
+                                backgroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  }
                   return Stack(
                     children: [
                       Positioned.fill(
@@ -709,6 +744,33 @@ class _HomeMapCardState extends State<_HomeMapCard> {
                   );
                 },
               ),
+      ),
+    );
+    if (widget.fullScreen) return card;
+    return Semantics(
+      button: true,
+      label: 'Open map full screen',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _openFullScreen,
+        child: card,
+      ),
+    );
+  }
+}
+
+class _FullScreenMap extends StatelessWidget {
+  const _FullScreenMap({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('${state.vacuum.name} map')),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: _HomeMapCard(state: state, fullScreen: true),
       ),
     );
   }
