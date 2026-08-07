@@ -15,6 +15,8 @@ class CleaningSchedule {
     required this.time,
     required this.vacuumEntityId,
     this.enabled = true,
+    this.fanSpeed,
+    this.settings = const [],
   });
 
   final String id;
@@ -24,6 +26,8 @@ class CleaningSchedule {
   final String time;
   final String vacuumEntityId;
   final bool enabled;
+  final String? fanSpeed;
+  final List<VacuumSetting> settings;
 
   String get days {
     if (weekdays.length == 7) return 'EVERY DAY';
@@ -40,6 +44,8 @@ class CleaningSchedule {
         time: time,
         vacuumEntityId: vacuumEntityId,
         enabled: enabled ?? this.enabled,
+        fanSpeed: fanSpeed,
+        settings: settings,
       );
 
   factory CleaningSchedule.fromHomeAssistant(HomeAssistantSchedule schedule) =>
@@ -51,6 +57,8 @@ class CleaningSchedule {
         time: schedule.time,
         vacuumEntityId: schedule.vacuumEntityId,
         enabled: schedule.enabled,
+        fanSpeed: schedule.fanSpeed,
+        settings: schedule.settings,
       );
 }
 
@@ -137,6 +145,8 @@ class AppState extends ChangeNotifier {
       _vacuumSegments[vacuum.entityId] ?? const [];
   List<VacuumSetting> get vacuumSettings =>
       _vacuumSettings[vacuum.entityId] ?? const [];
+  List<VacuumSetting> settingsForVacuum(String entityId) =>
+      _vacuumSettings[entityId] ?? const [];
 
   Future<void> initialize() async {
     try {
@@ -264,6 +274,13 @@ class AppState extends ChangeNotifier {
     ];
     _vacuumSettings[vacuum.entityId] = [
       const VacuumSetting(
+        entityId: 'select.orbit_cleaning_mode',
+        name: 'Cleaning mode',
+        kind: VacuumSettingKind.select,
+        value: 'Sweeping and mopping',
+        options: ['Sweeping', 'Mopping', 'Sweeping and mopping'],
+      ),
+      const VacuumSetting(
         entityId: 'select.orbit_carpet_cleaning_mode',
         name: 'Carpet cleaning mode',
         kind: VacuumSettingKind.select,
@@ -323,8 +340,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> refreshVacuumSettings() async {
-    if (isDemo || _client == null || vacuums.isEmpty) return;
-    final entityId = vacuum.entityId;
+    if (vacuums.isEmpty) return;
+    await refreshVacuumSettingsFor(vacuum.entityId);
+  }
+
+  Future<void> refreshVacuumSettingsFor(String entityId) async {
+    if (isDemo || _client == null) return;
     settingsLoading = true;
     settingsError = null;
     notifyListeners();
@@ -562,6 +583,40 @@ class AppState extends ChangeNotifier {
         time: schedule.time,
         weekdays: schedule.weekdays,
         vacuumEntityId: schedule.vacuumEntityId,
+        fanSpeed: schedule.fanSpeed,
+        settings: schedule.settings,
+      );
+      await refreshSchedules();
+      return true;
+    } catch (error) {
+      scheduleError = _message(error);
+      return false;
+    } finally {
+      busyScheduleIds.remove(schedule.id);
+      notifyListeners();
+    }
+  }
+
+  Future<bool> updateSchedule(CleaningSchedule schedule) async {
+    final index = schedules.indexWhere((item) => item.id == schedule.id);
+    if (index < 0) return false;
+    if (isDemo) {
+      schedules[index] = schedule;
+      notifyListeners();
+      return true;
+    }
+    busyScheduleIds.add(schedule.id);
+    scheduleError = null;
+    notifyListeners();
+    try {
+      await _client!.createScrubbySchedule(
+        id: schedule.id,
+        title: schedule.title,
+        time: schedule.time,
+        weekdays: schedule.weekdays,
+        vacuumEntityId: schedule.vacuumEntityId,
+        fanSpeed: schedule.fanSpeed,
+        settings: schedule.settings,
       );
       await refreshSchedules();
       return true;

@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../core/app_state.dart';
 import '../theme.dart';
 import 'home_page.dart';
-import 'map_page.dart';
 import 'rooms_page.dart';
 import 'schedules_page.dart';
 import 'settings_page.dart';
@@ -22,8 +21,19 @@ class _DashboardShellState extends State<DashboardShell> {
 
   void _selectPage(int value) {
     setState(() => index = value);
-    if (value == 2) widget.state.refreshSchedules();
-    if (value == 4) widget.state.refreshVacuumSettings();
+    if (value == 1) widget.state.refreshSchedules();
+  }
+
+  void _openVacuumSettings() {
+    widget.state.refreshVacuumSettings();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: Text(widget.state.vacuum.name)),
+          body: SettingsPage(state: widget.state),
+        ),
+      ),
+    );
   }
 
   Future<void> _confirmLogout() async {
@@ -52,11 +62,9 @@ class _DashboardShellState extends State<DashboardShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomePage(state: widget.state, onOpenMap: () => setState(() => index = 1)),
-      MapPage(state: widget.state),
+      HomePage(state: widget.state, onOpenSettings: _openVacuumSettings),
       SchedulesPage(state: widget.state),
       RoomsPage(state: widget.state),
-      SettingsPage(state: widget.state),
     ];
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
@@ -102,11 +110,6 @@ class _DashboardShellState extends State<DashboardShell> {
                     label: 'Home',
                   ),
                   NavigationDestination(
-                    icon: Icon(Icons.map_outlined),
-                    selectedIcon: Icon(Icons.map),
-                    label: 'Map',
-                  ),
-                  NavigationDestination(
                     icon: Icon(Icons.calendar_month_outlined),
                     selectedIcon: Icon(Icons.calendar_month),
                     label: 'Schedule',
@@ -115,11 +118,6 @@ class _DashboardShellState extends State<DashboardShell> {
                     icon: Icon(Icons.door_front_door_outlined),
                     selectedIcon: Icon(Icons.door_front_door),
                     label: 'Rooms',
-                  ),
-                  NavigationDestination(
-                    icon: Icon(Icons.tune_outlined),
-                    selectedIcon: Icon(Icons.tune_rounded),
-                    label: 'Settings',
                   ),
                 ],
               )
@@ -300,28 +298,16 @@ class _SideRail extends StatelessWidget {
             onTap: () => onSelected(0),
           ),
           _RailItem(
-            icon: Icons.map_rounded,
-            label: 'Live map',
+            icon: Icons.calendar_month_rounded,
+            label: 'Schedules',
             selected: index == 1,
             onTap: () => onSelected(1),
           ),
           _RailItem(
-            icon: Icons.calendar_month_rounded,
-            label: 'Schedules',
-            selected: index == 2,
-            onTap: () => onSelected(2),
-          ),
-          _RailItem(
             icon: Icons.door_front_door_rounded,
             label: 'Rooms',
-            selected: index == 3,
-            onTap: () => onSelected(3),
-          ),
-          _RailItem(
-            icon: Icons.tune_rounded,
-            label: 'Robot settings',
-            selected: index == 4,
-            onTap: () => onSelected(4),
+            selected: index == 2,
+            onTap: () => onSelected(2),
           ),
           const Spacer(),
           _RailItem(

@@ -19,8 +19,9 @@ import 'package:scrubby/main.dart';
 import 'package:scrubby/core/app_state.dart';
 import 'package:scrubby/core/home_assistant.dart';
 import 'package:scrubby/screens/dashboard_shell.dart';
-import 'package:scrubby/screens/map_page.dart';
+import 'package:scrubby/screens/home_page.dart';
 import 'package:scrubby/screens/rooms_page.dart';
+import 'package:scrubby/screens/schedules_page.dart';
 import 'package:scrubby/screens/settings_page.dart';
 
 void main() {
@@ -51,6 +52,45 @@ void main() {
     expect(find.text('Orbit'), findsWidgets);
     expect(find.text('START'), findsOneWidget);
     expect(find.text('Today at a glance'), findsOneWidget);
+  });
+
+  testWidgets('tapping a schedule opens it for editing', (
+    WidgetTester tester,
+  ) async {
+    final state = AppState()..startDemo();
+    await state.addSchedule(
+      const CleaningSchedule(
+        id: 'scrubby_morning',
+        entityId: '',
+        title: 'Morning clean',
+        weekdays: [DateTime.monday, DateTime.wednesday],
+        time: '09:30',
+        vacuumEntityId: 'vacuum.orbit',
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SchedulesPage(state: state)),
+      ),
+    );
+
+    await tester.tap(find.text('Morning clean'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit schedule'), findsOneWidget);
+    expect(find.text('Save changes'), findsOneWidget);
+    final nameField = find.byType(TextField);
+    expect(nameField, findsOneWidget);
+    await tester.enterText(nameField, 'Evening clean');
+    final saveButton = find.text('Save changes');
+    await tester.ensureVisible(saveButton);
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(state.schedules, hasLength(1));
+    expect(state.schedules.single.id, 'scrubby_morning');
+    expect(state.schedules.single.title, 'Evening clean');
+    expect(state.schedules.single.time, '09:30');
   });
 
   test('reads battery values without inventing zero for missing data', () {
@@ -128,6 +168,18 @@ void main() {
             ],
             'action': [
               {
+                'alias': 'Set suction power',
+                'service': 'vacuum.set_fan_speed',
+                'target': {'entity_id': 'vacuum.test'},
+                'data': {'fan_speed': 'Turbo'},
+              },
+              {
+                'alias': 'Set Cleaning route',
+                'service': 'select.select_option',
+                'target': {'entity_id': 'select.test_cleaning_route'},
+                'data': {'option': 'Deep'},
+              },
+              {
                 'service': 'vacuum.start',
                 'target': {'entity_id': 'vacuum.test'},
               },
@@ -149,6 +201,9 @@ void main() {
     expect(schedules.single.weekdays, [1, 3, 5]);
     expect(schedules.single.vacuumEntityId, 'vacuum.test');
     expect(schedules.single.enabled, isTrue);
+    expect(schedules.single.fanSpeed, 'Turbo');
+    expect(schedules.single.settings.single.name, 'Cleaning route');
+    expect(schedules.single.settings.single.value, 'Deep');
   });
 
   test('creates a Home Assistant automation and reloads automations', () async {
@@ -195,6 +250,57 @@ void main() {
     );
 
     expect(reloaded, isTrue);
+  });
+
+  test('adds selected cleaning preferences before a scheduled clean', () async {
+    late List<dynamic> actions;
+    final client = HomeAssistantClient(
+      'http://homeassistant.local:8123',
+      'test-token',
+      httpClient: MockClient((request) async {
+        if (request.url.path == '/api/config/automation/config/scrubby_modes') {
+          actions =
+              (jsonDecode(request.body) as Map<String, dynamic>)['action']
+                  as List<dynamic>;
+          return http.Response('{"result":"ok"}', HttpStatus.ok);
+        }
+        return http.Response('[]', HttpStatus.ok);
+      }),
+    );
+    addTearDown(client.close);
+
+    await client.createScrubbySchedule(
+      id: 'scrubby_modes',
+      title: 'Deep clean',
+      time: '10:00',
+      weekdays: [DateTime.saturday],
+      vacuumEntityId: 'vacuum.dreame',
+      fanSpeed: 'Turbo',
+      settings: const [
+        VacuumSetting(
+          entityId: 'select.dreame_cleaning_mode',
+          name: 'Cleaning mode',
+          kind: VacuumSettingKind.select,
+          value: 'Sweeping and mopping',
+        ),
+        VacuumSetting(
+          entityId: 'select.dreame_cleaning_route',
+          name: 'Cleaning route',
+          kind: VacuumSettingKind.select,
+          value: 'Deep',
+        ),
+      ],
+    );
+
+    expect(actions.map((action) => action['service']), [
+      'vacuum.set_fan_speed',
+      'select.select_option',
+      'select.select_option',
+      'vacuum.start',
+    ]);
+    expect(actions[0]['data'], {'fan_speed': 'Turbo'});
+    expect(actions[1]['data'], {'option': 'Sweeping and mopping'});
+    expect(actions[2]['data'], {'option': 'Deep'});
   });
 
   test(
@@ -594,7 +700,9 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: MapPage(state: state)),
+          home: Scaffold(
+            body: HomePage(state: state, onOpenSettings: () {}),
+          ),
         ),
       );
 
@@ -642,6 +750,26 @@ void main() {
     expect(state.vacuums, isEmpty);
   });
 
+  testWidgets('opens vacuum settings from the home vacuum card', (
+    WidgetTester tester,
+  ) async {
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
+
+    expect(find.text('Settings'), findsNothing);
+    expect(find.text('Tap for settings'), findsOneWidget);
+
+    await tester.tap(find.text(state.vacuum.name));
+    await tester.pumpAndSettle();
+
+    expect(find.text('${state.vacuum.name} settings'), findsOneWidget);
+    expect(find.text('Carpet cleaning mode'), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+  });
+
   testWidgets('shows and updates Dreame carpet settings', (
     WidgetTester tester,
   ) async {
@@ -687,6 +815,53 @@ void main() {
       isFalse,
     );
   });
+
+  testWidgets('hides unavailable settings in a collapsed section', (
+    WidgetTester tester,
+  ) async {
+    final state = _SettingsTestState([
+      const VacuumSetting(
+        entityId: 'switch.orbit_carpet_boost',
+        name: 'Carpet boost',
+        kind: VacuumSettingKind.toggle,
+        value: 'on',
+      ),
+      const VacuumSetting(
+        entityId: 'switch.orbit_off_peak_charging',
+        name: 'Off-peak charging',
+        kind: VacuumSettingKind.toggle,
+        value: 'unavailable',
+        available: false,
+      ),
+    ])..startDemo();
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SettingsPage(state: state)),
+      ),
+    );
+
+    expect(find.text('Carpet boost'), findsOneWidget);
+    expect(find.text('Unavailable settings (1)'), findsOneWidget);
+    expect(find.text('Off-peak charging'), findsNothing);
+
+    await tester.tap(find.text('Unavailable settings (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Off-peak charging'), findsOneWidget);
+    expect(find.text('Currently unavailable'), findsOneWidget);
+  });
+}
+
+class _SettingsTestState extends AppState {
+  _SettingsTestState(this.settings)
+    : super(secureStorage: const _FakeSecureStorage());
+
+  final List<VacuumSetting> settings;
+
+  @override
+  List<VacuumSetting> get vacuumSettings => settings;
 }
 
 class _FakeSecureStorage extends FlutterSecureStorage {

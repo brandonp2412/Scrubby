@@ -13,7 +13,12 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final groups = <String, List<VacuumSetting>>{};
+    final unavailableSettings = <VacuumSetting>[];
     for (final setting in state.vacuumSettings) {
+      if (!setting.available) {
+        unavailableSettings.add(setting);
+        continue;
+      }
       groups.putIfAbsent(setting.category, () => []).add(setting);
     }
     return PageFrame(
@@ -38,7 +43,7 @@ class SettingsPage extends StatelessWidget {
               message: state.settingsError!,
               onRetry: state.refreshVacuumSettings,
             )
-          else if (groups.isEmpty)
+          else if (groups.isEmpty && unavailableSettings.isEmpty)
             _EmptySettings(
               message:
                   'Home Assistant did not expose any configurable entities for this robot. Enable its switch, select, number, and button entities in Home Assistant, then refresh.',
@@ -87,6 +92,50 @@ class SettingsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
+            ],
+            if (unavailableSettings.isNotEmpty) ...[
+              SurfaceCard(
+                padding: EdgeInsets.zero,
+                child: ExpansionTile(
+                  key: const ValueKey('unavailable-settings'),
+                  initiallyExpanded: false,
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  leading: const Icon(Icons.visibility_off_outlined),
+                  title: Text(
+                    'Unavailable settings (${unavailableSettings.length})',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: const Text('Tap to show'),
+                  children: [
+                    for (
+                      var index = 0;
+                      index < unavailableSettings.length;
+                      index++
+                    ) ...[
+                      if (index == 0)
+                        Divider(
+                          height: 1,
+                          indent: 20,
+                          endIndent: 20,
+                          color: ink.withValues(alpha: .08),
+                        ),
+                      _SettingTile(
+                        setting: unavailableSettings[index],
+                        state: state,
+                      ),
+                      if (index != unavailableSettings.length - 1)
+                        Divider(
+                          height: 1,
+                          indent: 20,
+                          endIndent: 20,
+                          color: ink.withValues(alpha: .08),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
             Center(
               child: TextButton.icon(

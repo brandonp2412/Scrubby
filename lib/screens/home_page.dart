@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.state, required this.onOpenMap});
+  const HomePage({
+    super.key,
+    required this.state,
+    required this.onOpenSettings,
+  });
   final AppState state;
-  final VoidCallback onOpenMap;
+  final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -26,8 +31,11 @@ class HomePage extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth > 760;
-              final hero = _ControlHero(state: state);
-              final side = _StatusColumn(state: state, onOpenMap: onOpenMap);
+              final hero = _ControlHero(
+                state: state,
+                onOpenSettings: onOpenSettings,
+              );
+              final side = _StatusColumn(state: state);
               return wide
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -156,8 +164,9 @@ class HomePage extends StatelessWidget {
 }
 
 class _ControlHero extends StatelessWidget {
-  const _ControlHero({required this.state});
+  const _ControlHero({required this.state, required this.onOpenSettings});
   final AppState state;
+  final VoidCallback onOpenSettings;
 
   Future<void> _action(
     BuildContext context,
@@ -179,135 +188,177 @@ class _ControlHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vacuum = state.vacuum;
-    return Container(
-      height: 400,
-      padding: const EdgeInsets.all(28),
-      decoration: BoxDecoration(
-        color: ink,
-        borderRadius: BorderRadius.circular(30),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x2217211E),
-            blurRadius: 35,
-            offset: Offset(0, 16),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    vacuum.name,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.headlineMedium?.copyWith(color: Colors.white),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    vacuum.isDocked ? 'On the dock' : prettyState(vacuum.state),
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Icon(
-                vacuum.battery == null
-                    ? Icons.battery_unknown_rounded
-                    : Icons.battery_5_bar_rounded,
-                color: (vacuum.battery ?? 100) < 20 ? coral : mint,
-              ),
-              const SizedBox(width: 5),
-              Text(
-                vacuum.battery == null ? '—' : '${vacuum.battery}%',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                ),
+    return Semantics(
+      button: true,
+      label: 'Open ${vacuum.name} settings',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onOpenSettings,
+        child: Container(
+          height: 400,
+          padding: const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: ink,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x2217211E),
+                blurRadius: 35,
+                offset: Offset(0, 16),
               ),
             ],
           ),
-          const Spacer(),
-          Center(
-            child: Semantics(
-              button: true,
-              label: vacuum.isCleaning ? 'Pause cleaning' : 'Start cleaning',
-              child: InkWell(
-                onTap: state.isBusy
-                    ? null
-                    : () => _action(context, state.toggleCleaning),
-                customBorder: const CircleBorder(),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 240),
-                  width: 174,
-                  height: 174,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: vacuum.isCleaning ? coral : mint,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (vacuum.isCleaning ? coral : mint).withValues(
-                          alpha: .18,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          vacuum.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.headlineMedium
+                              ?.copyWith(color: Colors.white),
                         ),
-                        blurRadius: 0,
-                        spreadRadius: 14,
-                      ),
-                    ],
-                  ),
-                  child: state.isBusy
-                      ? const Padding(
-                          padding: EdgeInsets.all(70),
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: ink,
-                          ),
-                        )
-                      : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                        const SizedBox(height: 3),
+                        Text(
+                          vacuum.isDocked
+                              ? 'On the dock'
+                              : prettyState(vacuum.state),
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        const SizedBox(height: 7),
+                        const Row(
                           children: [
                             Icon(
-                              vacuum.isCleaning
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              size: 55,
-                              color: ink,
+                              Icons.settings_outlined,
+                              size: 15,
+                              color: Colors.white70,
                             ),
-                            Text(
-                              vacuum.isCleaning ? 'PAUSE' : 'START',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                                color: ink,
+                            SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                'Tap for settings',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                             ),
                           ],
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Icon(
+                    vacuum.battery == null
+                        ? Icons.battery_unknown_rounded
+                        : Icons.battery_5_bar_rounded,
+                    color: (vacuum.battery ?? 100) < 20 ? coral : mint,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    vacuum.battery == null ? '—' : '${vacuum.battery}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.white54,
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Center(
+                child: Semantics(
+                  button: true,
+                  label: vacuum.isCleaning
+                      ? 'Pause cleaning'
+                      : 'Start cleaning',
+                  child: InkWell(
+                    onTap: state.isBusy
+                        ? null
+                        : () => _action(context, state.toggleCleaning),
+                    customBorder: const CircleBorder(),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 240),
+                      width: 174,
+                      height: 174,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: vacuum.isCleaning ? coral : mint,
+                        boxShadow: [
+                          BoxShadow(
+                            color: (vacuum.isCleaning ? coral : mint)
+                                .withValues(alpha: .18),
+                            blurRadius: 0,
+                            spreadRadius: 14,
+                          ),
+                        ],
+                      ),
+                      child: state.isBusy
+                          ? const Padding(
+                              padding: EdgeInsets.all(70),
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: ink,
+                              ),
+                            )
+                          : Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  vacuum.isCleaning
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  size: 55,
+                                  color: ink,
+                                ),
+                                Text(
+                                  vacuum.isCleaning ? 'PAUSE' : 'START',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.5,
+                                    color: ink,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          const Spacer(),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _MiniAction(
-                icon: Icons.home_rounded,
-                label: 'Dock',
-                onTap: () => _action(context, state.dock),
-              ),
-              const SizedBox(width: 14),
-              _MiniAction(
-                icon: Icons.volume_up_outlined,
-                label: 'Find',
-                onTap: () => _action(context, state.locate),
+              const Spacer(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _MiniAction(
+                    icon: Icons.home_rounded,
+                    label: 'Dock',
+                    onTap: () => _action(context, state.dock),
+                  ),
+                  const SizedBox(width: 14),
+                  _MiniAction(
+                    icon: Icons.volume_up_outlined,
+                    label: 'Find',
+                    onTap: () => _action(context, state.locate),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -339,9 +390,8 @@ class _MiniAction extends StatelessWidget {
 }
 
 class _StatusColumn extends StatelessWidget {
-  const _StatusColumn({required this.state, required this.onOpenMap});
+  const _StatusColumn({required this.state});
   final AppState state;
-  final VoidCallback onOpenMap;
 
   Future<void> _chooseSuction(BuildContext context) async {
     final vacuum = state.vacuum;
@@ -400,53 +450,7 @@ class _StatusColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(
-          height: 250,
-          child: SurfaceCard(
-            padding: EdgeInsets.zero,
-            child: InkWell(
-              onTap: onOpenMap,
-              borderRadius: BorderRadius.circular(24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Stack(
-                  children: [
-                    Positioned.fill(
-                      child: state.vacuum.mapImage == null
-                          ? Container(
-                              color: const Color(0xFFE2EADF),
-                              alignment: Alignment.center,
-                              padding: const EdgeInsets.all(28),
-                              child: const Text(
-                                'No map entity found',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: fern,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            )
-                          : Image.memory(
-                              state.vacuum.mapImage!,
-                              fit: BoxFit.contain,
-                              filterQuality: FilterQuality.medium,
-                              gaplessPlayback: true,
-                            ),
-                    ),
-                    const Positioned(
-                      right: 18,
-                      top: 16,
-                      child: CircleAvatar(
-                        backgroundColor: Colors.white,
-                        child: Icon(Icons.arrow_outward_rounded, color: fern),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        SizedBox(height: 250, child: _HomeMapCard(state: state)),
         const SizedBox(height: 18),
         SurfaceCard(
           padding: EdgeInsets.zero,
@@ -493,6 +497,318 @@ class _StatusColumn extends StatelessWidget {
       ],
     );
   }
+}
+
+class _HomeMapCard extends StatefulWidget {
+  const _HomeMapCard({required this.state});
+
+  final AppState state;
+
+  @override
+  State<_HomeMapCard> createState() => _HomeMapCardState();
+}
+
+class _HomeMapCardState extends State<_HomeMapCard> {
+  final _transformation = TransformationController();
+  bool _labelMode = false;
+
+  @override
+  void dispose() {
+    _transformation.dispose();
+    super.dispose();
+  }
+
+  void _zoom(double factor) {
+    final current = _transformation.value.getMaxScaleOnAxis();
+    final target = (current * factor).clamp(1.0, 5.0);
+    _transformation.value = Matrix4.diagonal3Values(target, target, 1);
+  }
+
+  Future<void> _addLabel(TapUpDetails details, Size size) async {
+    final scenePosition = _transformation.toScene(details.localPosition);
+    final result = await showDialog<_RoomLabelResult>(
+      context: context,
+      builder: (context) => _RoomLabelDialog(
+        segments: widget.state.vacuumSegments,
+        unavailableSegmentIds: widget.state.mapRoomLabels
+            .map((label) => label.segmentId)
+            .nonNulls
+            .toSet(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    try {
+      await widget.state.addMapRoomLabel(
+        result.name,
+        (scenePosition.dx / size.width).clamp(0.05, 0.95),
+        (scenePosition.dy / size.height).clamp(0.05, 0.95),
+        segmentId: result.segmentId,
+      );
+      if (mounted) setState(() => _labelMode = false);
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst(
+        RegExp(r'^(Exception|FormatException):\s*'),
+        '',
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save the room label: $message')),
+      );
+    }
+  }
+
+  Future<void> _renameLabel(MapRoomLabel label) async {
+    final result = await showDialog<_RoomLabelResult>(
+      context: context,
+      builder: (context) => _RoomLabelDialog(
+        initialName: label.name,
+        initialSegmentId: label.segmentId,
+        segments: widget.state.vacuumSegments,
+        unavailableSegmentIds: widget.state.mapRoomLabels
+            .where((item) => item.id != label.id)
+            .map((item) => item.segmentId)
+            .nonNulls
+            .toSet(),
+      ),
+    );
+    if (result == null || !mounted) return;
+    await widget.state.addMapRoomLabel(
+      result.name,
+      label.x,
+      label.y,
+      segmentId: result.segmentId,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final map = widget.state.vacuum.mapImage;
+    return SurfaceCard(
+      padding: EdgeInsets.zero,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: map == null
+            ? Container(
+                color: const Color(0xFFE2EADF),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.all(28),
+                child: const Text(
+                  'No map entity found',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: fern, fontWeight: FontWeight.w700),
+                ),
+              )
+            : LayoutBuilder(
+                builder: (context, constraints) {
+                  final size = constraints.biggest;
+                  return Stack(
+                    children: [
+                      Positioned.fill(
+                        child: InteractiveViewer(
+                          transformationController: _transformation,
+                          minScale: 1,
+                          maxScale: 5,
+                          child: SizedBox.fromSize(
+                            size: size,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Image.memory(
+                                    map,
+                                    fit: BoxFit.contain,
+                                    filterQuality: FilterQuality.high,
+                                    gaplessPlayback: true,
+                                  ),
+                                ),
+                                for (final label in widget.state.mapRoomLabels)
+                                  Positioned(
+                                    left: label.x * size.width,
+                                    top: label.y * size.height,
+                                    child: FractionalTranslation(
+                                      translation: const Offset(-0.5, -0.5),
+                                      child: InputChip(
+                                        label: Text(label.name),
+                                        tooltip: 'Rename ${label.name}',
+                                        onPressed: () => _renameLabel(label),
+                                        onDeleted: () => widget.state
+                                            .removeMapRoomLabel(label),
+                                        deleteIcon: const Icon(
+                                          Icons.close,
+                                          size: 16,
+                                        ),
+                                        backgroundColor: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      if (_labelMode)
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTapUp: (details) => _addLabel(details, size),
+                            child: Container(
+                              color: fern.withValues(alpha: .08),
+                              alignment: Alignment.bottomCenter,
+                              padding: const EdgeInsets.all(12),
+                              child: const Chip(
+                                avatar: Icon(Icons.touch_app_rounded),
+                                label: Text('Tap inside a room to label it'),
+                              ),
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        right: 12,
+                        top: 12,
+                        child: FloatingActionButton.small(
+                          heroTag: 'home-map-label',
+                          tooltip: _labelMode
+                              ? 'Cancel room label'
+                              : 'Label a room',
+                          backgroundColor: _labelMode ? fern : Colors.white,
+                          foregroundColor: _labelMode ? Colors.white : ink,
+                          onPressed: () =>
+                              setState(() => _labelMode = !_labelMode),
+                          child: Icon(
+                            _labelMode
+                                ? Icons.close
+                                : Icons.label_outline_rounded,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        right: 12,
+                        bottom: 12,
+                        child: Column(
+                          children: [
+                            FloatingActionButton.small(
+                              heroTag: 'home-map-plus',
+                              tooltip: 'Zoom in',
+                              backgroundColor: Colors.white,
+                              foregroundColor: ink,
+                              onPressed: () => _zoom(1.35),
+                              child: const Icon(Icons.add),
+                            ),
+                            const SizedBox(height: 6),
+                            FloatingActionButton.small(
+                              heroTag: 'home-map-minus',
+                              tooltip: 'Zoom out',
+                              backgroundColor: Colors.white,
+                              foregroundColor: ink,
+                              onPressed: () => _zoom(1 / 1.35),
+                              child: const Icon(Icons.remove),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+      ),
+    );
+  }
+}
+
+class _RoomLabelDialog extends StatefulWidget {
+  const _RoomLabelDialog({
+    required this.segments,
+    required this.unavailableSegmentIds,
+    this.initialName,
+    this.initialSegmentId,
+  });
+
+  final String? initialName;
+  final String? initialSegmentId;
+  final List<VacuumSegment> segments;
+  final Set<String> unavailableSegmentIds;
+
+  @override
+  State<_RoomLabelDialog> createState() => _RoomLabelDialogState();
+}
+
+class _RoomLabelDialogState extends State<_RoomLabelDialog> {
+  late final _controller = TextEditingController(text: widget.initialName);
+  late String? _segmentId =
+      widget.initialSegmentId ??
+      widget.segments
+          .where(
+            (segment) => !widget.unavailableSegmentIds.contains(segment.id),
+          )
+          .firstOrNull
+          ?.id;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final name = _controller.text.trim();
+    if (name.isNotEmpty && (widget.segments.isEmpty || _segmentId != null)) {
+      Navigator.pop(
+        context,
+        _RoomLabelResult(name: name, segmentId: _segmentId),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.initialName == null ? 'Label this room' : 'Rename room'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.segments.isNotEmpty) ...[
+          DropdownButtonFormField<String>(
+            initialValue: _segmentId,
+            decoration: const InputDecoration(labelText: 'Vacuum room'),
+            items: [
+              for (final segment in widget.segments)
+                DropdownMenuItem(
+                  value: segment.id,
+                  enabled:
+                      segment.id == widget.initialSegmentId ||
+                      !widget.unavailableSegmentIds.contains(segment.id),
+                  child: Text(segment.name),
+                ),
+            ],
+            onChanged: (value) => setState(() => _segmentId = value),
+          ),
+          const SizedBox(height: 14),
+        ],
+        TextField(
+          controller: _controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Display name'),
+          onSubmitted: (_) => _submit(),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: _submit,
+        child: Text(widget.initialName == null ? 'Add label' : 'Save name'),
+      ),
+    ],
+  );
+}
+
+class _RoomLabelResult {
+  const _RoomLabelResult({required this.name, required this.segmentId});
+
+  final String name;
+  final String? segmentId;
 }
 
 class _Metric extends StatelessWidget {

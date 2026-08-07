@@ -154,6 +154,8 @@ class HomeAssistantSchedule {
     required this.weekdays,
     required this.vacuumEntityId,
     required this.enabled,
+    this.fanSpeed,
+    this.settings = const [],
   });
 
   final String id;
@@ -163,6 +165,8 @@ class HomeAssistantSchedule {
   final List<int> weekdays;
   final String vacuumEntityId;
   final bool enabled;
+  final String? fanSpeed;
+  final List<VacuumSetting> settings;
 }
 
 String _displayName(Object? friendlyName) {
@@ -178,6 +182,13 @@ String _displayName(Object? friendlyName) {
   }
 
   return name;
+}
+
+String _settingDisplayName(String entityId) {
+  final slug = entityId.split('.').last.replaceAll('_', ' ');
+  return slug.isEmpty
+      ? 'Robot setting'
+      : '${slug[0].toUpperCase()}${slug.substring(1)}';
 }
 
 int? _readBattery(Map<String, dynamic> attributes) {
@@ -997,6 +1008,8 @@ class HomeAssistantClient {
     required String time,
     required List<int> weekdays,
     required String vacuumEntityId,
+    String? fanSpeed,
+    List<VacuumSetting> settings = const [],
   }) async {
     final response = await _httpClient
         .post(
@@ -1015,6 +1028,14 @@ class HomeAssistantClient {
               },
             ],
             'action': [
+              if (fanSpeed != null)
+                {
+                  'alias': 'Set suction power',
+                  'service': 'vacuum.set_fan_speed',
+                  'target': {'entity_id': vacuumEntityId},
+                  'data': {'fan_speed': fanSpeed},
+                },
+              for (final setting in settings) _scheduleSettingAction(setting),
               {
                 'service': 'vacuum.start',
                 'target': {'entity_id': vacuumEntityId},
@@ -1087,6 +1108,28 @@ class HomeAssistantClient {
     final data = vacuumAction['data'] as Map<String, dynamic>? ?? const {};
     final targetEntity = target['entity_id'] ?? data['entity_id'];
 
+    String? fanSpeed;
+    final settings = <VacuumSetting>[];
+    for (final action in actions.whereType<Map<String, dynamic>>()) {
+      final service = (action['service'] ?? action['action'])?.toString();
+      final actionTarget =
+          action['target'] as Map<String, dynamic>? ?? const {};
+      final actionData = action['data'] as Map<String, dynamic>? ?? const {};
+      if (service == 'vacuum.set_fan_speed' &&
+          (actionTarget['entity_id'] == targetEntity ||
+              actionData['entity_id'] == targetEntity)) {
+        fanSpeed = actionData['fan_speed']?.toString();
+        continue;
+      }
+      final setting = _parseScheduleSetting(
+        action,
+        service,
+        actionTarget,
+        actionData,
+      );
+      if (setting != null) settings.add(setting);
+    }
+
     if (timeTrigger.isEmpty || targetEntity == null) {
       throw const FormatException(
         'A Scrubby automation has an invalid configuration.',
@@ -1104,7 +1147,74 @@ class HomeAssistantClient {
           ? targetEntity.first.toString()
           : targetEntity.toString(),
       enabled: enabled,
+      fanSpeed: fanSpeed,
+      settings: settings,
     );
+  }
+
+  Map<String, Object?> _scheduleSettingAction(VacuumSetting setting) {
+    final target = {'entity_id': setting.entityId};
+    return switch (setting.kind) {
+      VacuumSettingKind.select => {
+        'alias': 'Set ${setting.name}',
+        'service': 'select.select_option',
+        'target': target,
+        'data': {'option': setting.value},
+      },
+      VacuumSettingKind.number => {
+        'alias': 'Set ${setting.name}',
+        'service': 'number.set_value',
+        'target': target,
+        'data': {'value': double.tryParse(setting.value) ?? setting.value},
+      },
+      VacuumSettingKind.toggle => {
+        'alias': 'Set ${setting.name}',
+        'service': setting.enabled ? 'switch.turn_on' : 'switch.turn_off',
+        'target': target,
+      },
+      VacuumSettingKind.action => throw ArgumentError(
+        'Button actions cannot be added to a cleaning schedule.',
+      ),
+    };
+  }
+
+  VacuumSetting? _parseScheduleSetting(
+    Map<String, dynamic> action,
+    String? service,
+    Map<String, dynamic> target,
+    Map<String, dynamic> data,
+  ) {
+    final entityId = (target['entity_id'] ?? data['entity_id'])?.toString();
+    if (entityId == null) return null;
+    final alias = action['alias']?.toString();
+    final name = alias?.startsWith('Set ') == true
+        ? alias!.substring(4)
+        : _settingDisplayName(entityId);
+    if (service == 'select.select_option' && data['option'] != null) {
+      return VacuumSetting(
+        entityId: entityId,
+        name: name,
+        kind: VacuumSettingKind.select,
+        value: data['option'].toString(),
+      );
+    }
+    if (service == 'number.set_value' && data['value'] != null) {
+      return VacuumSetting(
+        entityId: entityId,
+        name: name,
+        kind: VacuumSettingKind.number,
+        value: data['value'].toString(),
+      );
+    }
+    if (service == 'switch.turn_on' || service == 'switch.turn_off') {
+      return VacuumSetting(
+        entityId: entityId,
+        name: name,
+        kind: VacuumSettingKind.toggle,
+        value: service == 'switch.turn_on' ? 'on' : 'off',
+      );
+    }
+    return null;
   }
 
   void _requireSuccess(http.Response response, String operation) {
