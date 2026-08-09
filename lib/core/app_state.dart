@@ -132,10 +132,15 @@ class AppState extends ChangeNotifier {
   HomeAssistantClient? _client;
   StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
   StreamSubscription<DreameNotification>? _notificationSubscription;
+  StreamSubscription<HomeAssistantConnectionStatus>? _connectionSubscription;
   List<VacuumEntity> vacuums = [];
   int selectedVacuum = 0;
   String homeName = 'Home';
   bool isDemo = false;
+  HomeAssistantConnectionStatus connectionStatus =
+      HomeAssistantConnectionStatus.connected;
+  bool get isOffline =>
+      !isDemo && connectionStatus == HomeAssistantConnectionStatus.offline;
   bool isBusy = false;
   bool isInitialized = false;
   String? savedUrl;
@@ -224,12 +229,17 @@ class AppState extends ChangeNotifier {
       }
       await _vacuumSubscription?.cancel();
       await _notificationSubscription?.cancel();
+      await _connectionSubscription?.cancel();
       await _client?.close();
       _client = client;
       _vacuumSubscription = client.vacuumUpdates.listen(_applyVacuumUpdate);
       _notificationSubscription = client.notificationUpdates.listen(
         _showNotification,
       );
+      _connectionSubscription = client.connectionUpdates.listen(
+        _updateConnectionStatus,
+      );
+      connectionStatus = client.connectionStatus;
       homeName = location;
       vacuums = entities;
       selectedVacuum = 0;
@@ -270,6 +280,18 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  void _updateConnectionStatus(HomeAssistantConnectionStatus status) {
+    final wasDisconnected =
+        connectionStatus != HomeAssistantConnectionStatus.connected;
+    connectionStatus = status;
+    notifyListeners();
+    if (wasDisconnected &&
+        status == HomeAssistantConnectionStatus.connected &&
+        !isDemo) {
+      unawaited(refreshSchedules());
+    }
+  }
+
   /// Move event delivery to the Android foreground-service isolate while the
   /// Flutter UI is suspended. The UI socket remains responsible for state
   /// updates whenever the app is visible.
@@ -294,11 +316,14 @@ class AppState extends ChangeNotifier {
     _vacuumSubscription = null;
     _notificationSubscription?.cancel();
     _notificationSubscription = null;
+    _connectionSubscription?.cancel();
+    _connectionSubscription = null;
     _client?.close();
     _client = null;
     homeName = 'Kōwhai House';
     isDemo = true;
-    vacuums = const [
+    connectionStatus = HomeAssistantConnectionStatus.connected;
+    vacuums = [
       VacuumEntity(
         entityId: 'vacuum.orbit',
         name: 'Orbit',
@@ -489,6 +514,9 @@ class AppState extends ChangeNotifier {
     final service = current.isCleaning ? 'pause' : 'start';
     await _runService(service, current.isCleaning ? 'paused' : 'cleaning');
   }
+
+  /// Ends the current task without sending the vacuum back to its dock.
+  Future<void> stopCleaning() => _runService('stop', 'idle');
 
   Future<void> dock() => _runService('return_to_base', 'returning');
   Future<void> locate() => _runService('locate', vacuum.state);
@@ -790,6 +818,8 @@ class AppState extends ChangeNotifier {
     _vacuumSubscription = null;
     await _notificationSubscription?.cancel();
     _notificationSubscription = null;
+    await _connectionSubscription?.cancel();
+    _connectionSubscription = null;
     await _client?.close();
     _client = null;
     vacuums = [];
@@ -804,15 +834,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  String _message(Object error) => error.toString().replaceFirst(
-    RegExp(r'^(Exception|FormatException):\s*'),
-    '',
-  );
+  String _message(Object error) {
+    if (!isDemo &&
+        connectionStatus != HomeAssistantConnectionStatus.connected) {
+      return connectionStatus == HomeAssistantConnectionStatus.offline
+          ? 'You’re offline. We’ll keep trying to reconnect.'
+          : 'Connection error. Trying to reconnect.';
+    }
+    return error.toString().replaceFirst(
+      RegExp(r'^(Exception|FormatException):\s*'),
+      '',
+    );
+  }
 
   @override
   void dispose() {
     _vacuumSubscription?.cancel();
     _notificationSubscription?.cancel();
+    _connectionSubscription?.cancel();
     _client?.close();
     super.dispose();
   }

@@ -185,98 +185,124 @@ class _ScheduleCard extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: busy ? null : onTap,
         child: SurfaceCard(
+          padding: EdgeInsets.zero,
+          color: schedule.enabled
+              ? Colors.white.withValues(alpha: .9)
+              : ink.withValues(alpha: .035),
           child: Column(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: ink.withValues(alpha: .07),
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          schedule.time,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 18,
-                            color: ink,
-                          ),
-                        ),
-                        Text(
-                          'START',
-                          style: TextStyle(
-                            fontSize: 9,
-                            letterSpacing: 1,
-                            color: ink.withValues(alpha: .45),
-                          ),
-                        ),
-                      ],
-                    ),
+              Container(
+                height: 6,
+                decoration: BoxDecoration(
+                  color: schedule.enabled ? fern : ink.withValues(alpha: .12),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
                   ),
-                  const SizedBox(width: 18),
-                  Expanded(
-                    child: Column(
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 14, 12),
+                child: Column(
+                  children: [
+                    Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          schedule.title,
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 5),
-                        Text(
-                          schedule.days,
-                          style: const TextStyle(
-                            color: fern,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1,
+                        Container(
+                          width: 74,
+                          height: 74,
+                          decoration: BoxDecoration(
+                            color: schedule.enabled
+                                ? mint
+                                : ink.withValues(alpha: .07),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                schedule.time,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 19,
+                                  color: ink,
+                                ),
+                              ),
+                              Text(
+                                'START',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  letterSpacing: 1,
+                                  color: ink.withValues(alpha: .45),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 5),
-                        Text(
-                          '$roomSummary · $vacuumName',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        if (schedule.fanSpeed != null ||
-                            schedule.settings.isNotEmpty) ...[
-                          const SizedBox(height: 5),
-                          Text(
-                            [
-                              if (schedule.fanSpeed != null) schedule.fanSpeed!,
-                              ...schedule.settings.map((item) => item.value),
-                              if (schedule.cycles > 1)
-                                '${schedule.cycles} cycles',
-                            ].join(' · '),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.bodySmall,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                schedule.title,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                schedule.days,
+                                style: const TextStyle(
+                                  color: fern,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                '$roomSummary · $vacuumName',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              if (schedule.fanSpeed != null ||
+                                  schedule.settings.isNotEmpty) ...[
+                                const SizedBox(height: 5),
+                                Text(
+                                  [
+                                    if (schedule.fanSpeed != null)
+                                      schedule.fanSpeed!,
+                                    ...schedule.settings.map(
+                                      (item) => item.value,
+                                    ),
+                                    if (schedule.cycles > 1)
+                                      '${schedule.cycles} cycles',
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ],
                           ),
-                        ],
+                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  Switch(
-                    value: schedule.enabled,
-                    onChanged: onChanged,
-                    activeThumbColor: fern,
-                  ),
-                  Spacer(),
-                  IconButton(
-                    onPressed: onDelete,
-                    tooltip: 'Delete schedule',
-                    icon: const Icon(Icons.delete_outline_rounded),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Switch(
+                          value: schedule.enabled,
+                          onChanged: onChanged,
+                          activeThumbColor: fern,
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          onPressed: onDelete,
+                          tooltip: 'Delete schedule',
+                          icon: const Icon(Icons.delete_outline_rounded),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

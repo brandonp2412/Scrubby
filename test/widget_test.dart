@@ -106,6 +106,18 @@ void main() {
     expect(entityWith({}).battery, isNull);
   });
 
+  test('can end a paused cleaning run', () async {
+    final state = AppState()..startDemo();
+
+    await state.toggleCleaning();
+    expect(state.vacuum.state, 'cleaning');
+    await state.toggleCleaning();
+    expect(state.vacuum.state, 'paused');
+
+    await state.stopCleaning();
+    expect(state.vacuum.state, 'idle');
+  });
+
   test('shows only the device portion of a repeated friendly name', () {
     VacuumEntity entityWith(String friendlyName) => VacuumEntity.fromJson({
       'entity_id': 'vacuum.test',
@@ -775,9 +787,9 @@ void main() {
     await tester.tap(find.text('Rooms').last);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Cleaning power'));
-    final balanced = tester.widget<Text>(find.text('Balanced'));
-    expect(balanced.maxLines, 1);
-    expect(balanced.softWrap, isFalse);
+    final turbo = tester.widget<Text>(find.text('Turbo'));
+    expect(turbo.maxLines, 1);
+    expect(turbo.softWrap, isFalse);
     expect(tester.takeException(), isNull);
   });
 

@@ -133,7 +133,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       index < group.value.length;
                       index++
                     ) ...[
-                      _SettingTile(setting: group.value[index], state: state),
+                      _SettingTile(
+                        setting: group.value[index],
+                        state: state,
+                        vacuumName: state.vacuum.name,
+                      ),
                       if (index != group.value.length - 1)
                         Divider(
                           height: 1,
@@ -177,6 +181,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _SettingTile(
                         setting: unavailableSettings[index],
                         state: state,
+                        vacuumName: state.vacuum.name,
                       ),
                       if (index != unavailableSettings.length - 1)
                         Divider(
@@ -275,10 +280,15 @@ class _NoSearchResults extends StatelessWidget {
 }
 
 class _SettingTile extends StatelessWidget {
-  const _SettingTile({required this.setting, required this.state});
+  const _SettingTile({
+    required this.setting,
+    required this.state,
+    required this.vacuumName,
+  });
 
   final VacuumSetting setting;
   final AppState state;
+  final String vacuumName;
 
   Future<void> _set(BuildContext context, Object? value) async {
     try {
@@ -300,7 +310,9 @@ class _SettingTile extends StatelessWidget {
       child: switch (setting.kind) {
         VacuumSettingKind.toggle => Row(
           children: [
-            Expanded(child: _Label(setting: setting)),
+            Expanded(
+              child: _Label(setting: setting, vacuumName: vacuumName),
+            ),
             if (busy)
               const SizedBox.square(
                 dimension: 22,
@@ -317,7 +329,9 @@ class _SettingTile extends StatelessWidget {
         ),
         VacuumSettingKind.select => Row(
           children: [
-            Expanded(child: _Label(setting: setting)),
+            Expanded(
+              child: _Label(setting: setting, vacuumName: vacuumName),
+            ),
             const SizedBox(width: 12),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 190),
@@ -344,11 +358,14 @@ class _SettingTile extends StatelessWidget {
         VacuumSettingKind.number => _NumberSetting(
           setting: setting,
           busy: busy,
+          vacuumName: vacuumName,
           onChanged: (value) => _set(context, value),
         ),
         VacuumSettingKind.action => Row(
           children: [
-            Expanded(child: _Label(setting: setting)),
+            Expanded(
+              child: _Label(setting: setting, vacuumName: vacuumName),
+            ),
             FilledButton.tonal(
               onPressed: busy || !setting.available
                   ? null
@@ -371,11 +388,13 @@ class _NumberSetting extends StatefulWidget {
   const _NumberSetting({
     required this.setting,
     required this.busy,
+    required this.vacuumName,
     required this.onChanged,
   });
 
   final VacuumSetting setting;
   final bool busy;
+  final String vacuumName;
   final ValueChanged<double> onChanged;
 
   @override
@@ -409,7 +428,12 @@ class _NumberSettingState extends State<_NumberSetting> {
       children: [
         Row(
           children: [
-            Expanded(child: _Label(setting: widget.setting)),
+            Expanded(
+              child: _Label(
+                setting: widget.setting,
+                vacuumName: widget.vacuumName,
+              ),
+            ),
             Text(
               '$display${widget.setting.unit == null ? '' : ' ${widget.setting.unit}'}',
               style: const TextStyle(fontWeight: FontWeight.w800),
@@ -432,15 +456,19 @@ class _NumberSettingState extends State<_NumberSetting> {
 }
 
 class _Label extends StatelessWidget {
-  const _Label({required this.setting});
+  const _Label({required this.setting, required this.vacuumName});
 
   final VacuumSetting setting;
+  final String vacuumName;
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      Text(setting.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+      Text(
+        _settingLabel(setting.name, vacuumName),
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
       if (!setting.available)
         Text(
           'Currently unavailable',
@@ -448,6 +476,19 @@ class _Label extends StatelessWidget {
         ),
     ],
   );
+}
+
+String _settingLabel(String settingName, String vacuumName) {
+  final trimmedName = settingName.trim();
+  final trimmedVacuumName = vacuumName.trim();
+  if (trimmedVacuumName.isEmpty) return trimmedName;
+
+  final prefix = RegExp(
+    '^${RegExp.escape(trimmedVacuumName)}(?:\\s*[-–—:]\\s*|\\s+)',
+    caseSensitive: false,
+  );
+  final label = trimmedName.replaceFirst(prefix, '').trim();
+  return label.isEmpty ? trimmedName : label;
 }
 
 class _EmptySettings extends StatelessWidget {

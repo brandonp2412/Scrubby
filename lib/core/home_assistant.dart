@@ -376,6 +376,8 @@ int? _percentage(Object? value) {
   return number.round();
 }
 
+enum HomeAssistantConnectionStatus { connected, reconnecting, offline }
+
 class HomeAssistantClient {
   HomeAssistantClient(String url, this.token, {http.Client? httpClient})
     : baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
@@ -388,6 +390,8 @@ class HomeAssistantClient {
   final bool _ownsHttpClient;
   final _vacuumUpdates = StreamController<List<VacuumEntity>>.broadcast();
   final _notificationUpdates = StreamController<DreameNotification>.broadcast();
+  final _connectionUpdates =
+      StreamController<HomeAssistantConnectionStatus>.broadcast();
   final Map<String, Map<String, dynamic>> _states = {};
   final Map<String, Uint8List> _mapImages = {};
   final Map<String, String> _mapEntityIds = {};
@@ -400,12 +404,18 @@ class HomeAssistantClient {
   bool _closed = false;
   bool _isConnecting = false;
   int _connectionGeneration = 0;
+  int _reconnectAttempts = 0;
+  HomeAssistantConnectionStatus _connectionStatus =
+      HomeAssistantConnectionStatus.connected;
   int _nextCommandId = 9;
   String _locationName = 'Home';
 
   Stream<List<VacuumEntity>> get vacuumUpdates => _vacuumUpdates.stream;
   Stream<DreameNotification> get notificationUpdates =>
       _notificationUpdates.stream;
+  Stream<HomeAssistantConnectionStatus> get connectionUpdates =>
+      _connectionUpdates.stream;
+  HomeAssistantConnectionStatus get connectionStatus => _connectionStatus;
 
   Map<String, String> get _headers => {
     'Authorization': 'Bearer $token',
@@ -578,6 +588,8 @@ class HomeAssistantClient {
         cancelOnError: true,
       );
       await ready.future;
+      _reconnectAttempts = 0;
+      _setConnectionStatus(HomeAssistantConnectionStatus.connected);
     } catch (error) {
       if (isInitialConnection) rethrow;
       _scheduleReconnect();
@@ -720,10 +732,28 @@ class HomeAssistantClient {
 
   void _scheduleReconnect() {
     if (_closed || _reconnectTimer?.isActive == true) return;
+    _reconnectAttempts++;
+    _setConnectionStatus(
+      _reconnectAttempts >= 3
+          ? HomeAssistantConnectionStatus.offline
+          : HomeAssistantConnectionStatus.reconnecting,
+    );
+    final delay = switch (_reconnectAttempts) {
+      1 => const Duration(seconds: 3),
+      2 => const Duration(seconds: 10),
+      3 => const Duration(seconds: 30),
+      _ => const Duration(minutes: 1),
+    };
     _reconnectTimer = Timer(
-      const Duration(seconds: 3),
+      delay,
       () => _openSocket(isInitialConnection: false),
     );
+  }
+
+  void _setConnectionStatus(HomeAssistantConnectionStatus status) {
+    if (_connectionStatus == status) return;
+    _connectionStatus = status;
+    if (!_closed) _connectionUpdates.add(status);
   }
 
   Future<void> close() async {
@@ -739,6 +769,7 @@ class HomeAssistantClient {
     await _channel?.sink.close();
     await _vacuumUpdates.close();
     await _notificationUpdates.close();
+    await _connectionUpdates.close();
     if (_ownsHttpClient) _httpClient.close();
   }
 

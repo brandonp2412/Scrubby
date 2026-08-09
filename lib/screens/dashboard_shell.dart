@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
+import '../core/home_assistant.dart';
 import '../theme.dart';
 import 'home_page.dart';
 import 'rooms_page.dart';
@@ -19,6 +20,44 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell> {
   int index = 0;
+  HomeAssistantConnectionStatus? _lastConnectionStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _lastConnectionStatus = widget.state.connectionStatus;
+    widget.state.addListener(_handleStateChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant DashboardShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      oldWidget.state.removeListener(_handleStateChanged);
+      _lastConnectionStatus = widget.state.connectionStatus;
+      widget.state.addListener(_handleStateChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.state.removeListener(_handleStateChanged);
+    super.dispose();
+  }
+
+  void _handleStateChanged() {
+    final status = widget.state.connectionStatus;
+    final wasConnected =
+        _lastConnectionStatus == HomeAssistantConnectionStatus.connected;
+    _lastConnectionStatus = status;
+    if (wasConnected &&
+        status == HomeAssistantConnectionStatus.reconnecting &&
+        mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Connection error. Trying to reconnect.')),
+      );
+    }
+  }
 
   void _selectPage(int value) {
     setState(() => index = value);
@@ -81,6 +120,7 @@ class _DashboardShellState extends State<DashboardShell> {
                 index: index,
                 onSelected: _selectPage,
                 onLogout: _confirmLogout,
+                offline: widget.state.isOffline,
               ),
             Expanded(
               child: Column(
@@ -106,16 +146,19 @@ class _DashboardShellState extends State<DashboardShell> {
                 onDestinationSelected: _selectPage,
                 destinations: const [
                   NavigationDestination(
+                    key: ValueKey('dashboard-tab-0'),
                     icon: Icon(Icons.space_dashboard_outlined),
                     selectedIcon: Icon(Icons.space_dashboard),
                     label: 'Home',
                   ),
                   NavigationDestination(
+                    key: ValueKey('dashboard-tab-1'),
                     icon: Icon(Icons.calendar_month_outlined),
                     selectedIcon: Icon(Icons.calendar_month),
                     label: 'Schedule',
                   ),
                   NavigationDestination(
+                    key: ValueKey('dashboard-tab-2'),
                     icon: Icon(Icons.door_front_door_outlined),
                     selectedIcon: Icon(Icons.door_front_door),
                     label: 'Rooms',
@@ -151,8 +194,8 @@ class _TopBar extends StatelessWidget {
         children: [
           if (MediaQuery.sizeOf(context).width < 900) ...[
             Container(
-              width: 36,
-              height: 36,
+              width: 46,
+              height: 46,
               decoration: const BoxDecoration(
                 color: Colors.black,
                 shape: BoxShape.circle,
@@ -160,7 +203,7 @@ class _TopBar extends StatelessWidget {
               child: const Icon(
                 Symbols.vacuum_2,
                 color: Colors.white,
-                size: 19,
+                size: 35,
               ),
             ),
             const SizedBox(width: 10),
@@ -203,11 +246,14 @@ class _TopBar extends StatelessWidget {
             const SizedBox.shrink(),
           if (MediaQuery.sizeOf(context).width < 900) ...[
             const SizedBox(width: 4),
-            IconButton(
-              onPressed: onLogout,
-              tooltip: 'Disconnect',
-              icon: const Icon(Icons.logout_rounded),
-            ),
+            if (state.isOffline)
+              const _OfflineIndicator()
+            else
+              IconButton(
+                onPressed: onLogout,
+                tooltip: 'Disconnect',
+                icon: const Icon(Icons.logout_rounded),
+              ),
           ],
         ],
       ),
@@ -243,15 +289,37 @@ class _RobotPill extends StatelessWidget {
   }
 }
 
+class _OfflineIndicator extends StatelessWidget {
+  const _OfflineIndicator();
+
+  @override
+  Widget build(BuildContext context) => const Tooltip(
+    message: 'Offline — reconnecting periodically',
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.cloud_off_rounded, color: coral),
+          SizedBox(width: 5),
+          Text('Offline', style: TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    ),
+  );
+}
+
 class _SideRail extends StatelessWidget {
   const _SideRail({
     required this.index,
     required this.onSelected,
     required this.onLogout,
+    required this.offline,
   });
   final int index;
   final ValueChanged<int> onSelected;
   final VoidCallback onLogout;
+  final bool offline;
 
   @override
   Widget build(BuildContext context) {
@@ -275,9 +343,13 @@ class _SideRail extends StatelessWidget {
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 20,
+                  radius: 25,
                   backgroundColor: fern,
-                  child: Icon(Icons.cleaning_services_rounded, color: mint),
+                  child: Icon(
+                    Icons.cleaning_services_rounded,
+                    color: mint,
+                    size: 28,
+                  ),
                 ),
                 SizedBox(width: 12),
                 Text(
@@ -293,18 +365,21 @@ class _SideRail extends StatelessWidget {
           ),
           const SizedBox(height: 48),
           _RailItem(
+            key: const ValueKey('dashboard-tab-0'),
             icon: Icons.space_dashboard_rounded,
             label: 'Overview',
             selected: index == 0,
             onTap: () => onSelected(0),
           ),
           _RailItem(
+            key: const ValueKey('dashboard-tab-1'),
             icon: Icons.calendar_month_rounded,
             label: 'Schedules',
             selected: index == 1,
             onTap: () => onSelected(1),
           ),
           _RailItem(
+            key: const ValueKey('dashboard-tab-2'),
             icon: Icons.door_front_door_rounded,
             label: 'Rooms',
             selected: index == 2,
@@ -312,10 +387,10 @@ class _SideRail extends StatelessWidget {
           ),
           const Spacer(),
           _RailItem(
-            icon: Icons.logout_rounded,
-            label: 'Disconnect',
+            icon: offline ? Icons.cloud_off_rounded : Icons.logout_rounded,
+            label: offline ? 'Offline' : 'Disconnect',
             selected: false,
-            onTap: onLogout,
+            onTap: offline ? null : onLogout,
           ),
         ],
       ),
@@ -325,6 +400,7 @@ class _SideRail extends StatelessWidget {
 
 class _RailItem extends StatelessWidget {
   const _RailItem({
+    super.key,
     required this.icon,
     required this.label,
     required this.selected,
@@ -333,7 +409,7 @@ class _RailItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

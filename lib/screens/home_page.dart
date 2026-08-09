@@ -285,6 +285,8 @@ class _ControlHero extends StatelessWidget {
                   button: true,
                   label: vacuum.isCleaning
                       ? 'Pause cleaning'
+                      : vacuum.isPaused
+                      ? 'Resume cleaning'
                       : 'Start cleaning',
                   child: InkWell(
                     onTap: state.isBusy
@@ -326,7 +328,11 @@ class _ControlHero extends StatelessWidget {
                                   color: ink,
                                 ),
                                 Text(
-                                  vacuum.isCleaning ? 'PAUSE' : 'START',
+                                  vacuum.isCleaning
+                                      ? 'PAUSE'
+                                      : vacuum.isPaused
+                                      ? 'RESUME'
+                                      : 'START',
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.5,
@@ -348,6 +354,14 @@ class _ControlHero extends StatelessWidget {
                     label: 'Dock',
                     onTap: () => _action(context, state.dock),
                   ),
+                  if (vacuum.isPaused) ...[
+                    const SizedBox(width: 14),
+                    _MiniAction(
+                      icon: Icons.stop_rounded,
+                      label: 'End clean',
+                      onTap: () => _action(context, state.stopCleaning),
+                    ),
+                  ],
                   const SizedBox(width: 14),
                   _MiniAction(
                     icon: Icons.volume_up_outlined,
@@ -717,7 +731,7 @@ class _HomeMapCardState extends State<_HomeMapCard> {
                       ),
                       Positioned(
                         right: 12,
-                        bottom: 12,
+                        top: 68,
                         child: Column(
                           children: [
                             FloatingActionButton.small(

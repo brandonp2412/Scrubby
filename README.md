@@ -39,3 +39,24 @@ flutter analyze
 flutter test
 flutter build web
 ```
+
+## Screenshots
+
+Generate the complete Fastlane screenshot set (phone, 7-inch tablet, 10-inch
+tablet, and desktop) with Waydroid and Chrome:
+
+```sh
+scripts/screenshots-waydroid.sh
+```
+
+Pass a dimension such as `phoneScreenshots`, `sevenInchScreenshots`,
+`tenInchScreenshots`, or `desktop` to regenerate only that target. A second
+argument can select one screenshot by number or test name, for example:
+
+```sh
+scripts/screenshots-waydroid.sh phoneScreenshots 1
+```
+
+Android output is written to Fastlane's Play metadata folders and desktop
+output to `fastlane/screenshots`. The runner requires Waydroid, ADB, `dwl`,
+ChromeDriver, and passwordless `sudo` for Waydroid administration.

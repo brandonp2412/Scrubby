@@ -47,7 +47,15 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       await widget.state.login(urlController.text, tokenController.text);
     } catch (error) {
-      if (mounted) _showError(error.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        _showError(
+          message == 'That access token was not accepted.' ||
+                  message == 'Connected, but no vacuum entities were found.'
+              ? message
+              : 'Connection error. Check Home Assistant and try again.',
+        );
+      }
     } finally {
       if (mounted) setState(() => loading = false);
     }
