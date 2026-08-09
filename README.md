@@ -2,6 +2,13 @@
 
 Scrubby is a focused Flutter companion for robot vacuums connected to Home Assistant. It turns the generic vacuum entity controls into a calm, purpose-built interface for starting a clean, checking progress, managing rooms, viewing a floor map, and planning schedules.
 
+## Supported platforms
+
+Scrubby is currently released and tested for Android, Linux, Windows, and the
+web. Apple platforms are not supported. The Android release keeps a foreground
+notification-monitoring service while the app is backgrounded; this is
+described in [Privacy](PRIVACY.md).
+
 ## Run it
 
 ```sh
@@ -26,9 +33,9 @@ Robot settings are discovered from Home Assistant's entity registry by matching 
 
 ## Dreame notifications
 
-Scrubby listens for all five event families emitted by the Dreame Home Assistant integration: `task_status`, `consumable`, `information`, `warning`, and `error`. They are delivered through separate native notification channels (Cleaning activity, Consumables, Robot information, Robot warnings, and Robot errors), so Android users can configure each family independently. The equivalent category identifiers and urgency levels are registered on iOS and macOS. Notification permission is requested after Home Assistant connects.
+Scrubby listens for all five event families emitted by the Dreame Home Assistant integration: `task_status`, `consumable`, `information`, `warning`, and `error`. They are delivered through separate Android notification channels (Cleaning activity, Consumables, Robot information, Robot warnings, and Robot errors), so users can configure each family independently. Notification permission is requested after Home Assistant connects.
 
-On Android, Scrubby starts a `remoteMessaging` foreground service when the app is backgrounded. The service runs the authenticated Home Assistant WebSocket in its own Dart isolate, reconnects using the securely stored credentials, and posts the same category-specific notifications even after the UI isolate is suspended. Android displays a small, low-priority “Scrubby connection” status notification while monitoring is active; stopping or force-stopping Scrubby stops delivery. iOS/macOS continue to follow the operating system’s background execution rules and need a push bridge for delivery after suspension.
+On Android, Scrubby starts a `remoteMessaging` foreground service when the app is backgrounded. The service runs the authenticated Home Assistant WebSocket in its own Dart isolate, reconnects using the securely stored credentials, and posts the same category-specific notifications even after the UI isolate is suspended. Android displays a small, low-priority “Scrubby connection” status notification while monitoring is active; stopping or force-stopping Scrubby stops delivery.
 
 For Flutter web, Home Assistant must allow the app's origin in `http.cors_allowed_origins`. Mobile builds support both local HTTP Home Assistant instances and remote HTTPS instances.
 
@@ -38,7 +45,12 @@ For Flutter web, Home Assistant must allow the app's origin in `http.cors_allowe
 flutter analyze
 flutter test
 flutter build web
+flutter build appbundle --release
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the supported toolchain and local
+release-signing setup. See [SECURITY.md](SECURITY.md) for vulnerability
+reporting and [PRIVACY.md](PRIVACY.md) for data handling.
 
 ## Screenshots
 
@@ -60,3 +72,9 @@ scripts/screenshots-waydroid.sh phoneScreenshots 1
 Android output is written to Fastlane's Play metadata folders and desktop
 output to `fastlane/screenshots`. The runner requires Waydroid, ADB, `dwl`,
 ChromeDriver, and passwordless `sudo` for Waydroid administration.
+
+## Trademarks and affiliation
+
+Scrubby is an independent project and is not affiliated with, endorsed by, or
+sponsored by Home Assistant or Dreame. Home Assistant and Dreame are trademarks
+of their respective owners.

@@ -1,0 +1,6 @@
+Scrubby is a focused companion for robot vacuums connected to your Home
+Assistant server. Start and pause cleaning, check progress and battery, manage
+rooms, view compatible maps, control device settings, and plan schedules.
+
+Scrubby connects directly to the Home Assistant server you choose. It does not
+operate a cloud service or include advertising or analytics.

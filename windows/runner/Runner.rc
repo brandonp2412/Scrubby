@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "scrubby" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "scrubby" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 app.scrubby. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Scrubby contributors. See LICENSE." "\0"
             VALUE "OriginalFilename", "scrubby.exe" "\0"
             VALUE "ProductName", "scrubby" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
