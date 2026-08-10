@@ -2,10 +2,13 @@ Scrubby is an independent project. It is not affiliated with, endorsed by, or
 sponsored by Home Assistant or Dreame. Home Assistant and Dreame are trademarks
 of their respective owners.
 
+Scrubby is licensed under the MIT License; see [LICENSE](LICENSE).
+
 Scrubby depends on Flutter, Dart, and packages resolved in pubspec.lock. Their
-licenses remain the responsibility of their respective copyright holders. The
-release workflow produces a dependency inventory and SBOM for each release.
+copyright and license notices are listed in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The release workflow produces
+a dependency inventory and SBOM for each release.
 
 The app icons under assets/branding and the repository screenshots are project
-assets. Before a release, maintainers must confirm that every included asset is
-original, properly licensed, or accompanied by its required attribution.
+assets. Their provenance and permitted use are recorded in
+[ASSET_LICENSES.md](ASSET_LICENSES.md).

@@ -52,6 +52,20 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the supported toolchain and local
 release-signing setup. See [SECURITY.md](SECURITY.md) for vulnerability
 reporting and [PRIVACY.md](PRIVACY.md) for data handling.
 
+## Installation and support
+
+For development, follow the source setup above. Published Android releases
+are distributed as signed Android App Bundles through the project’s release
+channel. Verify the published SHA-256 checksum and build-provenance
+attestation before installing a release obtained outside an app store.
+
+Use the repository issue tracker for reproducible bugs and feature requests.
+Do not include Home Assistant URLs, access tokens, maps, or other private
+household data. Security reports must follow [SECURITY.md](SECURITY.md).
+
+Scrubby is maintained by its contributors. Contributions are welcome under
+the [MIT License](LICENSE); see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Screenshots
 
 Generate the complete Fastlane screenshot set (phone, 7-inch tablet, 10-inch

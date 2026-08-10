@@ -10,6 +10,9 @@
    SBOM, then uploads them to that release.
 5. Verify the AAB signer and checksum before submitting it to a store. Complete
    that store's current privacy and foreground-service declarations.
+6. Confirm the asset and third-party notice records are current, and verify
+   that the release contains no local build, browser-session, credential, or
+   household data.
 
 ## Required GitHub repository secrets
 
