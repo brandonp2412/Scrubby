@@ -13,6 +13,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const _connectionTimeout = Duration(seconds: 15);
   final urlController = TextEditingController(text: '');
   final tokenController = TextEditingController();
   bool loading = false;
@@ -38,14 +39,26 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> connect() async {
-    if (urlController.text.trim().isEmpty ||
-        tokenController.text.trim().isEmpty) {
+    final url = urlController.text.trim();
+    final token = tokenController.text.trim();
+    if (url.isEmpty || token.isEmpty) {
       _showError('Enter your Home Assistant address and access token.');
+      return;
+    }
+    if (!_isValidHomeAssistantUrl(url)) {
+      _showError(
+        'Enter a valid Home Assistant URL, including http:// or https://.',
+      );
       return;
     }
     setState(() => loading = true);
     try {
-      await widget.state.login(urlController.text, tokenController.text);
+      await widget.state
+          .login(url, token)
+          .timeout(
+            _connectionTimeout,
+            onTimeout: () => throw Exception('Connection timed out.'),
+          );
     } catch (error) {
       if (mounted) {
         final message = error.toString().replaceFirst('Exception: ', '');
@@ -59,6 +72,13 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => loading = false);
     }
+  }
+
+  bool _isValidHomeAssistantUrl(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
   }
 
   void _showError(String message) {
