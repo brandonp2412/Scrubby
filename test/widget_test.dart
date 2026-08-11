@@ -751,6 +751,89 @@ void main() {
     },
   );
 
+  test('reconnects when an open WebSocket stops responding', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var connections = 0;
+
+    server.listen((request) async {
+      final connection = ++connections;
+      final socket = await WebSocketTransformer.upgrade(request);
+      socket.add(jsonEncode({'type': 'auth_required'}));
+      socket.listen((rawMessage) {
+        final message =
+            jsonDecode(rawMessage as String) as Map<String, dynamic>;
+        switch (message['type']) {
+          case 'auth':
+            socket.add(jsonEncode({'type': 'auth_ok'}));
+          case 'get_config':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': {'location_name': 'Test Home'},
+              }),
+            );
+          case 'get_states':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': [
+                  {
+                    'entity_id': 'vacuum.test',
+                    'state': connection == 1 ? 'docked' : 'cleaning',
+                    'attributes': {'friendly_name': 'Test Vacuum'},
+                  },
+                ],
+              }),
+            );
+          case 'subscribe_events':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': null,
+              }),
+            );
+          case 'ping':
+            // Simulate a half-open first socket: it accepts writes but never
+            // answers. The replacement connection responds normally.
+            if (connection > 1) {
+              socket.add(jsonEncode({'id': message['id'], 'type': 'pong'}));
+            }
+        }
+      });
+    });
+
+    final client = HomeAssistantClient(
+      'http://${server.address.address}:${server.port}',
+      'test-token',
+      heartbeatInterval: const Duration(milliseconds: 20),
+      heartbeatTimeout: const Duration(milliseconds: 20),
+    );
+    addTearDown(client.close);
+    final reconnecting = client.connectionUpdates.firstWhere(
+      (status) => status == HomeAssistantConnectionStatus.reconnecting,
+    );
+    final cleaning = client.vacuumUpdates.firstWhere(
+      (vacuums) => vacuums.single.state == 'cleaning',
+    );
+
+    await client.connect();
+    expect((await client.fetchVacuums()).single.state, 'docked');
+    await reconnecting.timeout(const Duration(seconds: 1));
+    expect(
+      (await cleaning.timeout(const Duration(seconds: 5))).single.state,
+      'cleaning',
+    );
+    expect(connections, 2);
+    expect(client.connectionStatus, HomeAssistantConnectionStatus.connected);
+  });
+
   testWidgets('mobile dashboard controls open and labels stay on one line', (
     WidgetTester tester,
   ) async {

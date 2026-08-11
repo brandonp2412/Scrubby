@@ -379,15 +379,22 @@ int? _percentage(Object? value) {
 enum HomeAssistantConnectionStatus { connected, reconnecting, offline }
 
 class HomeAssistantClient {
-  HomeAssistantClient(String url, this.token, {http.Client? httpClient})
-    : baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
-      _httpClient = httpClient ?? http.Client(),
-      _ownsHttpClient = httpClient == null;
+  HomeAssistantClient(
+    String url,
+    this.token, {
+    http.Client? httpClient,
+    this.heartbeatInterval = const Duration(seconds: 30),
+    this.heartbeatTimeout = const Duration(seconds: 15),
+  }) : baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
+       _httpClient = httpClient ?? http.Client(),
+       _ownsHttpClient = httpClient == null;
 
   final String baseUrl;
   final String token;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
+  final Duration heartbeatInterval;
+  final Duration heartbeatTimeout;
   final _vacuumUpdates = StreamController<List<VacuumEntity>>.broadcast();
   final _notificationUpdates = StreamController<DreameNotification>.broadcast();
   final _connectionUpdates =
@@ -401,6 +408,9 @@ class HomeAssistantClient {
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _socketSubscription;
   Timer? _reconnectTimer;
+  Timer? _heartbeatTimer;
+  Timer? _heartbeatTimeoutTimer;
+  int? _heartbeatCommandId;
   bool _closed = false;
   bool _isConnecting = false;
   int _connectionGeneration = 0;
@@ -568,6 +578,12 @@ class HomeAssistantClient {
                 }
               case 'event':
                 _handleEvent(data);
+              case 'pong':
+                if (data['id'] == _heartbeatCommandId) {
+                  _heartbeatTimeoutTimer?.cancel();
+                  _heartbeatTimeoutTimer = null;
+                  _heartbeatCommandId = null;
+                }
             }
           } catch (error, stackTrace) {
             if (!ready.isCompleted) ready.completeError(error, stackTrace);
@@ -590,6 +606,7 @@ class HomeAssistantClient {
       await ready.future;
       _reconnectAttempts = 0;
       _setConnectionStatus(HomeAssistantConnectionStatus.connected);
+      _startHeartbeat(generation);
     } catch (error) {
       if (isInitialConnection) rethrow;
       _scheduleReconnect();
@@ -724,10 +741,47 @@ class HomeAssistantClient {
 
   void _handleDisconnect(int generation) {
     if (_closed || generation != _connectionGeneration) return;
+    _connectionGeneration++;
+    _stopHeartbeat();
+    final subscription = _socketSubscription;
+    final channel = _channel;
+    _socketSubscription = null;
+    _channel = null;
+    unawaited(subscription?.cancel() ?? Future<void>.value());
+    unawaited(channel?.sink.close() ?? Future<void>.value());
     _failPendingCommands(
       Exception('The Home Assistant connection was interrupted.'),
     );
     _scheduleReconnect();
+  }
+
+  void _startHeartbeat(int generation) {
+    _stopHeartbeat();
+    _heartbeatTimer = Timer.periodic(heartbeatInterval, (_) {
+      if (_closed || generation != _connectionGeneration) return;
+      final channel = _channel;
+      if (channel == null || _heartbeatTimeoutTimer?.isActive == true) return;
+      final id = _nextCommandId++;
+      _heartbeatCommandId = id;
+      try {
+        channel.sink.add(jsonEncode({'id': id, 'type': 'ping'}));
+      } catch (_) {
+        _handleDisconnect(generation);
+        return;
+      }
+      _heartbeatTimeoutTimer = Timer(
+        heartbeatTimeout,
+        () => _handleDisconnect(generation),
+      );
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeatTimer?.cancel();
+    _heartbeatTimer = null;
+    _heartbeatTimeoutTimer?.cancel();
+    _heartbeatTimeoutTimer = null;
+    _heartbeatCommandId = null;
   }
 
   void _scheduleReconnect() {
@@ -760,6 +814,7 @@ class HomeAssistantClient {
     if (_closed) return;
     _closed = true;
     _reconnectTimer?.cancel();
+    _stopHeartbeat();
     for (final timer in _mapRefreshTimers.values) {
       timer.cancel();
     }
