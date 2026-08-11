@@ -47,6 +47,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Use the configured project key for local debug builds too, so
+            // installations can be updated by artifacts from either mode.
+            if (releaseKeystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.findByName("release")
+            }
+        }
+
         release {
             // A local release build remains unsigned until an upload key is
             // configured. Explicitly clearing Flutter's debug signing config
