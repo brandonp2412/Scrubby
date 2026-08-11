@@ -42,18 +42,40 @@ class SchedulesPage extends StatelessWidget {
           else if (state.schedules.isEmpty)
             const _EmptySchedules()
           else
-            for (var i = 0; i < state.schedules.length; i++) ...[
-              _ScheduleCard(
-                schedule: state.schedules[i],
-                vacuumName: state.vacuumName(state.schedules[i].vacuumEntityId),
-                roomSummary: state.scheduleRooms(state.schedules[i]),
-                busy: state.busyScheduleIds.contains(state.schedules[i].id),
-                onTap: () => _edit(context, i),
-                onChanged: (value) => state.toggleSchedule(i, value),
-                onDelete: () => _delete(context, i),
-              ),
-              const SizedBox(height: 13),
-            ],
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              primary: false,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: state.schedules.length,
+              onReorderItem: state.reorderSchedules,
+              itemBuilder: (context, index) {
+                final schedule = state.schedules[index];
+                return Padding(
+                  key: ValueKey(schedule.id),
+                  padding: const EdgeInsets.only(bottom: 13),
+                  child: _ScheduleCard(
+                    schedule: schedule,
+                    vacuumName: state.vacuumName(schedule.vacuumEntityId),
+                    roomSummary: state.scheduleRooms(schedule),
+                    busy: state.busyScheduleIds.contains(schedule.id),
+                    onTap: () => _edit(context, index),
+                    onChanged: (value) => state.toggleSchedule(index, value),
+                    onDelete: () => _delete(context, index),
+                    dragHandle: ReorderableDragStartListener(
+                      index: index,
+                      child: Tooltip(
+                        message: 'Reorder schedule',
+                        child: Icon(
+                          Icons.drag_handle_rounded,
+                          color: ink.withValues(alpha: .45),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -167,6 +189,7 @@ class _ScheduleCard extends StatelessWidget {
     required this.onTap,
     required this.onChanged,
     required this.onDelete,
+    required this.dragHandle,
   });
   final CleaningSchedule schedule;
   final String vacuumName;
@@ -175,6 +198,7 @@ class _ScheduleCard extends StatelessWidget {
   final VoidCallback onTap;
   final ValueChanged<bool> onChanged;
   final VoidCallback onDelete;
+  final Widget dragHandle;
 
   @override
   Widget build(BuildContext context) {
@@ -282,6 +306,11 @@ class _ScheduleCard extends StatelessWidget {
                               ],
                             ],
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        Semantics(
+                          label: 'Reorder ${schedule.title}',
+                          child: dragHandle,
                         ),
                       ],
                     ),

@@ -93,6 +93,44 @@ void main() {
     expect(state.schedules.single.time, '09:30');
   });
 
+  test('reorders schedules in their displayed order', () {
+    final state = AppState()..startDemo();
+    state.schedules.addAll([
+      const CleaningSchedule(
+        id: 'scrubby_first',
+        entityId: '',
+        title: 'First',
+        weekdays: [DateTime.monday],
+        time: '09:00',
+        vacuumEntityId: 'vacuum.orbit',
+      ),
+      const CleaningSchedule(
+        id: 'scrubby_second',
+        entityId: '',
+        title: 'Second',
+        weekdays: [DateTime.tuesday],
+        time: '10:00',
+        vacuumEntityId: 'vacuum.orbit',
+      ),
+      const CleaningSchedule(
+        id: 'scrubby_third',
+        entityId: '',
+        title: 'Third',
+        weekdays: [DateTime.wednesday],
+        time: '11:00',
+        vacuumEntityId: 'vacuum.orbit',
+      ),
+    ]);
+
+    state.reorderSchedules(0, 2);
+
+    expect(state.schedules.map((schedule) => schedule.id), [
+      'scrubby_second',
+      'scrubby_third',
+      'scrubby_first',
+    ]);
+  });
+
   test('reads battery values without inventing zero for missing data', () {
     VacuumEntity entityWith(Map<String, Object?> attributes) =>
         VacuumEntity.fromJson({

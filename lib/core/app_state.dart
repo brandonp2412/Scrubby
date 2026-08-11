@@ -127,6 +127,7 @@ class AppState extends ChangeNotifier {
   static const _urlKey = 'home_assistant_url';
   static const _tokenKey = 'home_assistant_token';
   static const _roomLabelsKey = 'map_room_labels';
+  static const _scheduleOrderKey = 'schedule_order';
   final FlutterSecureStorage _secureStorage;
   final VacuumNotificationPresenter _notificationPresenter;
   HomeAssistantClient? _client;
@@ -694,9 +695,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final loaded = await _client!.fetchScrubbySchedules();
+      final savedOrder = await _loadScheduleOrder();
+      final loadedSchedules = loaded
+          .map(CleaningSchedule.fromHomeAssistant)
+          .toList(growable: false);
       schedules
         ..clear()
-        ..addAll(loaded.map(CleaningSchedule.fromHomeAssistant));
+        ..addAll(_applyScheduleOrder(loadedSchedules, savedOrder));
+      await _saveScheduleOrder();
     } catch (error) {
       scheduleError = _message(error);
     } finally {
@@ -801,6 +807,7 @@ class AppState extends ChangeNotifier {
     try {
       if (!isDemo) await _client!.deleteScrubbySchedule(schedule.id);
       schedules.removeWhere((item) => item.id == schedule.id);
+      await _saveScheduleOrder();
     } catch (error) {
       scheduleError = _message(error);
     } finally {
@@ -814,6 +821,7 @@ class AppState extends ChangeNotifier {
     await _secureStorage.delete(key: _urlKey);
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _roomLabelsKey);
+    await _secureStorage.delete(key: _scheduleOrderKey);
     await _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
     await _notificationSubscription?.cancel();
@@ -832,6 +840,66 @@ class AppState extends ChangeNotifier {
     scheduleError = null;
     savedUrl = null;
     notifyListeners();
+  }
+
+  /// Moves a schedule in the displayed order and retains that preference
+  /// between schedule refreshes.
+  void reorderSchedules(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= schedules.length) return;
+    if (newIndex < 0 || newIndex >= schedules.length || oldIndex == newIndex) {
+      return;
+    }
+    final schedule = schedules.removeAt(oldIndex);
+    schedules.insert(newIndex, schedule);
+    unawaited(_saveScheduleOrder());
+    notifyListeners();
+  }
+
+  Future<List<String>> _loadScheduleOrder() async {
+    final value = await _secureStorage.read(key: _scheduleOrderKey);
+    if (value == null) return const [];
+    try {
+      return (jsonDecode(value) as List<dynamic>).whereType<String>().toList(
+        growable: false,
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<CleaningSchedule> _applyScheduleOrder(
+    List<CleaningSchedule> loaded,
+    List<String> savedOrder,
+  ) {
+    if (savedOrder.isEmpty) return loaded;
+    final positions = {
+      for (var index = 0; index < savedOrder.length; index++)
+        savedOrder[index]: index,
+    };
+    final originalPositions = {
+      for (var index = 0; index < loaded.length; index++)
+        loaded[index].id: index,
+    };
+    return [...loaded]..sort((a, b) {
+      final aPosition =
+          positions[a.id] ?? (savedOrder.length + originalPositions[a.id]!);
+      final bPosition =
+          positions[b.id] ?? (savedOrder.length + originalPositions[b.id]!);
+      return aPosition.compareTo(bPosition);
+    });
+  }
+
+  Future<void> _saveScheduleOrder() async {
+    if (isDemo) return;
+    try {
+      await _secureStorage.write(
+        key: _scheduleOrderKey,
+        value: jsonEncode(schedules.map((schedule) => schedule.id).toList()),
+      );
+    } catch (_) {
+      // Schedule ordering is a local preference, so a storage failure should
+      // not make an otherwise successful schedule action appear to fail.
+    }
   }
 
   String _message(Object error) {
