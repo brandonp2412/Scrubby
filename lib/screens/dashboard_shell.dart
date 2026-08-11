@@ -20,15 +20,17 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell>
     with SingleTickerProviderStateMixin {
-  int index = 0;
   HomeAssistantConnectionStatus? _lastConnectionStatus;
   late final TabController _tabController;
+  late final Animation<double> _tabAnimation;
+  int _lastCommittedTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this)
       ..addListener(_handleTabChanged);
+    _tabAnimation = _tabController.animation!;
     _lastConnectionStatus = widget.state.connectionStatus;
     widget.state.addListener(_handleStateChanged);
   }
@@ -67,14 +69,16 @@ class _DashboardShellState extends State<DashboardShell>
   }
 
   void _selectPage(int value) {
-    if (value != index) _tabController.animateTo(value);
+    if (value != _tabController.index) _tabController.animateTo(value);
   }
 
   void _handleTabChanged() {
-    if (_tabController.index == index) return;
-
-    setState(() => index = _tabController.index);
-    if (index == 1) widget.state.refreshSchedules();
+    final selectedIndex = _tabController.index;
+    final didCommitNewPage = selectedIndex != _lastCommittedTabIndex;
+    _lastCommittedTabIndex = selectedIndex;
+    if (didCommitNewPage && selectedIndex == 1) {
+      widget.state.refreshSchedules();
+    }
   }
 
   void _openVacuumSettings() {
@@ -129,11 +133,14 @@ class _DashboardShellState extends State<DashboardShell>
         body: Row(
           children: [
             if (MediaQuery.sizeOf(context).width >= 900)
-              _SideRail(
-                index: index,
-                onSelected: _selectPage,
-                onLogout: _confirmLogout,
-                offline: widget.state.isOffline,
+              AnimatedBuilder(
+                animation: _tabAnimation,
+                builder: (context, _) => _SideRail(
+                  index: _tabAnimation.value.round(),
+                  onSelected: _selectPage,
+                  onLogout: _confirmLogout,
+                  offline: widget.state.isOffline,
+                ),
               ),
             Expanded(
               child: Column(
@@ -153,29 +160,32 @@ class _DashboardShellState extends State<DashboardShell>
           ],
         ),
         bottomNavigationBar: MediaQuery.sizeOf(context).width < 900
-            ? NavigationBar(
-                selectedIndex: index,
-                onDestinationSelected: _selectPage,
-                destinations: const [
-                  NavigationDestination(
-                    key: ValueKey('dashboard-tab-0'),
-                    icon: Icon(Icons.space_dashboard_outlined),
-                    selectedIcon: Icon(Icons.space_dashboard),
-                    label: 'Home',
-                  ),
-                  NavigationDestination(
-                    key: ValueKey('dashboard-tab-1'),
-                    icon: Icon(Icons.calendar_month_outlined),
-                    selectedIcon: Icon(Icons.calendar_month),
-                    label: 'Schedule',
-                  ),
-                  NavigationDestination(
-                    key: ValueKey('dashboard-tab-2'),
-                    icon: Icon(Icons.door_front_door_outlined),
-                    selectedIcon: Icon(Icons.door_front_door),
-                    label: 'Rooms',
-                  ),
-                ],
+            ? AnimatedBuilder(
+                animation: _tabAnimation,
+                builder: (context, _) => NavigationBar(
+                  selectedIndex: _tabAnimation.value.round(),
+                  onDestinationSelected: _selectPage,
+                  destinations: const [
+                    NavigationDestination(
+                      key: ValueKey('dashboard-tab-0'),
+                      icon: Icon(Icons.space_dashboard_outlined),
+                      selectedIcon: Icon(Icons.space_dashboard),
+                      label: 'Home',
+                    ),
+                    NavigationDestination(
+                      key: ValueKey('dashboard-tab-1'),
+                      icon: Icon(Icons.calendar_month_outlined),
+                      selectedIcon: Icon(Icons.calendar_month),
+                      label: 'Schedule',
+                    ),
+                    NavigationDestination(
+                      key: ValueKey('dashboard-tab-2'),
+                      icon: Icon(Icons.door_front_door_outlined),
+                      selectedIcon: Icon(Icons.door_front_door),
+                      label: 'Rooms',
+                    ),
+                  ],
+                ),
               )
             : null,
       ),
