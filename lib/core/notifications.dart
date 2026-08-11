@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show DartPluginRegistrant;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -84,7 +82,6 @@ Future<void> stopBackgroundNotificationService() async {
 /// only while the app is backgrounded.
 @pragma('vm:entry-point')
 Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
-  DartPluginRegistrant.ensureInitialized();
   if (service is AndroidServiceInstance) {
     await service.setAsForegroundService();
   }
