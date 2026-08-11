@@ -38,7 +38,7 @@ class HomePage extends StatelessWidget {
               final side = _StatusColumn(state: state);
               return wide
                   ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(flex: 6, child: hero),
                         const SizedBox(width: 18),

@@ -1016,6 +1016,40 @@ void main() {
     expect(state.vacuums, isEmpty);
   });
 
+  testWidgets('swiping switches dashboard tabs', (WidgetTester tester) async {
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
+
+    final content = find.byKey(const ValueKey('dashboard-page-content'));
+    await tester.fling(content, const Offset(-400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TabBarView>(content).controller!.index, 1);
+    expect(find.text('Cleaning rhythm'), findsOneWidget);
+
+    await tester.fling(content, const Offset(400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('Today at a glance'), findsOneWidget);
+
+    await tester.fling(content, const Offset(400, 0), 1000);
+    await tester.pumpAndSettle();
+    expect(find.text('Today at a glance'), findsOneWidget);
+  });
+
+  testWidgets('desktop dashboard lays out all tab pages', (
+    WidgetTester tester,
+  ) async {
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    await tester.binding.setSurfaceSize(const Size(1200, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
+
+    expect(find.text('Today at a glance'), findsOneWidget);
+  });
+
   testWidgets('opens vacuum settings from the home vacuum card', (
     WidgetTester tester,
   ) async {

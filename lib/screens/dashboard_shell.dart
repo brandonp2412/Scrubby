@@ -18,13 +18,17 @@ class DashboardShell extends StatefulWidget {
   State<DashboardShell> createState() => _DashboardShellState();
 }
 
-class _DashboardShellState extends State<DashboardShell> {
+class _DashboardShellState extends State<DashboardShell>
+    with SingleTickerProviderStateMixin {
   int index = 0;
   HomeAssistantConnectionStatus? _lastConnectionStatus;
+  late final TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(_handleTabChanged);
     _lastConnectionStatus = widget.state.connectionStatus;
     widget.state.addListener(_handleStateChanged);
   }
@@ -42,6 +46,9 @@ class _DashboardShellState extends State<DashboardShell> {
   @override
   void dispose() {
     widget.state.removeListener(_handleStateChanged);
+    _tabController
+      ..removeListener(_handleTabChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -60,8 +67,14 @@ class _DashboardShellState extends State<DashboardShell> {
   }
 
   void _selectPage(int value) {
-    setState(() => index = value);
-    if (value == 1) widget.state.refreshSchedules();
+    if (value != index) _tabController.animateTo(value);
+  }
+
+  void _handleTabChanged() {
+    if (_tabController.index == index) return;
+
+    setState(() => index = _tabController.index);
+    if (index == 1) widget.state.refreshSchedules();
   }
 
   void _openVacuumSettings() {
@@ -127,12 +140,11 @@ class _DashboardShellState extends State<DashboardShell> {
                 children: [
                   _TopBar(state: widget.state, onLogout: _confirmLogout),
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 260),
-                      child: KeyedSubtree(
-                        key: ValueKey(index),
-                        child: pages[index],
-                      ),
+                    child: TabBarView(
+                      key: const ValueKey('dashboard-page-content'),
+                      controller: _tabController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: pages,
                     ),
                   ),
                 ],
