@@ -46,6 +46,7 @@ dev_dependencies:
     sdk: flutter
   integration_test:
     sdk: flutter
+  patrol: ^4.8.0
 
   flutter_lints: ^6.0.0
 
@@ -59,6 +60,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+patrol:
+  app_name: Scrubby
+  android:
+    package_name: app.scrubby.scrubby
 
   # To add assets to your application, add an assets section, like this:
   # assets:

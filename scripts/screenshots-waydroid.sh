@@ -52,7 +52,7 @@ add_timestamps() {
 
 watch_files() {
     local path
-    for path in lib assets integration_test test_driver; do
+    for path in lib assets integration_test patrol_test test_driver; do
         [ -d "$PROJECT_DIR/$path" ] && find "$PROJECT_DIR/$path" -type f
     done
     [ -f "$PROJECT_DIR/pubspec.yaml" ] && printf '%s\n' "$PROJECT_DIR/pubspec.yaml"
@@ -273,6 +273,23 @@ run_device_type() {
     return 1
 }
 
+run_notifications_test() {
+    [ "$device_type_filter" = desktop ] && return 0
+    command -v patrol >/dev/null 2>&1 || {
+        log 'ERROR: notification tests require the Patrol CLI (run: flutter pub global activate patrol_cli)'
+        return 1
+    }
+
+    log '=== Running Android notification Patrol tests ==='
+    (
+        cd "$PROJECT_DIR" &&
+            run_with_timeout "$DRIVE_TIMEOUT" patrol test \
+                --target patrol_test/notifications_test.dart \
+                --device "$device"
+    ) 2>&1 | add_timestamps
+    return "${PIPESTATUS[0]}"
+}
+
 main() {
     local device_type width height
     if [ "$watch" -eq 1 ]; then
@@ -307,6 +324,7 @@ main() {
             esac
             run_device_type "$device_type" "$width" "$height" "$only" || exit 1
         done
+        run_notifications_test || exit 1
     fi
     if [ -z "$device_type_filter" ] || [ "$device_type_filter" = desktop ]; then
         local chrome_args=(desktop)

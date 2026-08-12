@@ -48,6 +48,15 @@ flutter build web
 flutter build appbundle --release
 ```
 
+The Android notification end-to-end tests use Patrol and a disposable
+emulator or test device. Patrol clears Scrubby's app data to isolate each test,
+so do not run them on a device whose saved Home Assistant connection you need:
+
+```sh
+flutter pub global activate patrol_cli
+patrol test --target patrol_test/notifications_test.dart
+```
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the supported toolchain and local
 release-signing setup. See [SECURITY.md](SECURITY.md) for vulnerability
 reporting and [PRIVACY.md](PRIVACY.md) for data handling.

@@ -18,6 +18,7 @@ abstract interface class VacuumNotificationPresenter {
 
 const _backgroundChannelId = 'scrubby_background_service';
 const _backgroundNotificationId = 5100;
+const _androidNotificationIcon = 'ic_bg_service_small';
 
 bool get _supportsAndroidService =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -191,7 +192,10 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
       return;
     }
     try {
-      const android = AndroidInitializationSettings('ic_launcher');
+      // flutter_local_notifications resolves small icons from res/drawable.
+      // The launcher icon lives in res/mipmap and makes initialization fail,
+      // which would otherwise silently disable every event notification.
+      const android = AndroidInitializationSettings(_androidNotificationIcon);
       const darwin = DarwinInitializationSettings(
         requestAlertPermission: false,
         requestBadgePermission: false,
@@ -212,8 +216,10 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
       for (final channel in _androidChannels) {
         await androidPlugin?.createNotificationChannel(channel);
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
       // A notification plugin failure must never prevent Home Assistant login.
+      debugPrint('Could not initialize local notifications: $error');
+      debugPrintStack(stackTrace: stackTrace);
       _supported = false;
     }
   }

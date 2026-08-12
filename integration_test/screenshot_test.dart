@@ -148,7 +148,7 @@ void main() {
     testWidgets('SettingsPage', (tester) async {
       final state = _buildState();
       await _pumpDashboard(tester, state);
-      await tester.tap(find.bySemanticsLabel('Open Orbit settings'));
+      await tester.tap(find.byKey(const ValueKey('open-vacuum-settings')));
       await tester.pumpAndSettle();
       await _takeScreenshot(
         binding: binding,

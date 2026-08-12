@@ -189,6 +189,7 @@ class _ControlHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final vacuum = state.vacuum;
     return Semantics(
+      key: const ValueKey('open-vacuum-settings'),
       button: true,
       label: 'Open ${vacuum.name} settings',
       child: GestureDetector(
