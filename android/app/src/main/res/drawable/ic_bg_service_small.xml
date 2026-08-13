@@ -1,9 +1,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M12,2A10,10 0,1 0,12 22A10,10 0,1 0,12 2M8,8h8v2H8zM7,12h10v2H7zM9,16h6v2H9z" />
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+    <!-- Monochrome counterpart of the adaptive launcher foreground. -->
+    <group
+        android:scaleX="0.45"
+        android:scaleY="0.45"
+        android:translateX="264"
+        android:translateY="264">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M480,480q-17,0 -28.5,-11.5T440,440q0,-17 11.5,-28.5T480,400q17,0 28.5,11.5T520,440q0,17 -11.5,28.5T480,480ZM417,680 L363,734q27,13 56,19.5t61,6.5q32,0 61,-6.5t56,-19.5l-53,-54L417,680ZM480,200q-58,0 -109,22t-89,60q-38,38 -60,89t-22,109q0,63 25.5,117t69.5,92l56,-56q-32,-28 -51.5,-67.5T280,480q0,-83 58.5,-141.5T480,280q83,0 141.5,58.5T680,480q0,46 -19.5,85.5T609,633l56,56q44,-38 69.5,-92T760,480q0,-58 -22,-109t-60,-89q-38,-38 -89,-60t-109,-22ZM480,360q-50,0 -85,35t-35,85q0,50 35,85t85,35q50,0 85,-35t35,-85q0,-50 -35,-85t-85,-35ZM480,840q-75,0 -140.5,-28.5t-114,-77q-48.5,-48.5 -77,-114T120,480q0,-75 28.5,-140.5t77,-114q48.5,-48.5 114,-77T480,120q75,0 140.5,28.5t114,77q48.5,48.5 77,114T840,480q0,75 -28.5,140.5t-77,114q-48.5,48.5 -114,77T480,840Z" />
+    </group>
 </vector>
