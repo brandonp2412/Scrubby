@@ -75,44 +75,29 @@ class MapRoomLabel {
   const MapRoomLabel({
     required this.id,
     required this.name,
-    required this.x,
-    required this.y,
-    this.segmentId,
+    required this.segmentId,
   });
 
   final String id;
   final String name;
-  final double x;
-  final double y;
-  final String? segmentId;
+  final String segmentId;
 
-  MapRoomLabel copyWith({
-    String? name,
-    double? x,
-    double? y,
-    String? segmentId,
-  }) => MapRoomLabel(
+  MapRoomLabel copyWith({String? name, String? segmentId}) => MapRoomLabel(
     id: id,
     name: name ?? this.name,
-    x: x ?? this.x,
-    y: y ?? this.y,
     segmentId: segmentId ?? this.segmentId,
   );
 
   Map<String, Object?> toJson() => {
     'id': id,
     'name': name,
-    'x': x,
-    'y': y,
     'segment_id': segmentId,
   };
 
   factory MapRoomLabel.fromJson(Map<String, dynamic> json) => MapRoomLabel(
     id: json['id'] as String,
     name: json['name'] as String,
-    x: (json['x'] as num).toDouble(),
-    y: (json['y'] as num).toDouble(),
-    segmentId: json['segment_id']?.toString(),
+    segmentId: json['segment_id'].toString(),
   );
 }
 
@@ -127,6 +112,7 @@ class AppState extends ChangeNotifier {
   static const _urlKey = 'home_assistant_url';
   static const _tokenKey = 'home_assistant_token';
   static const _roomLabelsKey = 'map_room_labels';
+  static const _vacuumNamesKey = 'vacuum_display_names';
   static const _scheduleOrderKey = 'schedule_order';
   final FlutterSecureStorage _secureStorage;
   final VacuumNotificationPresenter _notificationPresenter;
@@ -147,6 +133,7 @@ class AppState extends ChangeNotifier {
   String? savedUrl;
   String? restoreError;
   final Map<String, List<MapRoomLabel>> _mapRoomLabels = {};
+  final Map<String, String> _vacuumNames = {};
   final Map<String, List<VacuumSegment>> _vacuumSegments = {};
   final Map<String, List<VacuumSetting>> _vacuumSettings = {};
   final Map<String, SegmentCleaningCapability> _segmentCleaningCapabilities =
@@ -204,6 +191,7 @@ class AppState extends ChangeNotifier {
       savedUrl = credentials[_urlKey];
       final token = credentials[_tokenKey];
       _restoreRoomLabels(credentials[_roomLabelsKey]);
+      _restoreVacuumNames(credentials[_vacuumNamesKey]);
       if (savedUrl != null && token != null) {
         await login(savedUrl!, token, persist: false);
       }
@@ -242,7 +230,7 @@ class AppState extends ChangeNotifier {
       );
       connectionStatus = client.connectionStatus;
       homeName = location;
-      vacuums = entities;
+      vacuums = entities.map(_withDisplayName).toList(growable: false);
       selectedVacuum = 0;
       isDemo = false;
       savedUrl = client.baseUrl;
@@ -261,7 +249,7 @@ class AppState extends ChangeNotifier {
   void _applyVacuumUpdate(List<VacuumEntity> updated) {
     if (updated.isEmpty) return;
     final selectedId = vacuums.isEmpty ? null : vacuum.entityId;
-    vacuums = updated;
+    vacuums = updated.map(_withDisplayName).toList(growable: false);
     final matchingIndex = selectedId == null
         ? -1
         : vacuums.indexWhere((item) => item.entityId == selectedId);
@@ -349,34 +337,10 @@ class AppState extends ChangeNotifier {
     _vacuumSettings.clear();
     _segmentCleaningCapabilities.clear();
     _mapRoomLabels[vacuum.entityId] = [
-      MapRoomLabel(
-        id: 'demo-kitchen',
-        name: 'Kitchen',
-        x: .32,
-        y: .32,
-        segmentId: '1',
-      ),
-      MapRoomLabel(
-        id: 'demo-living-room',
-        name: 'Living room',
-        x: .67,
-        y: .35,
-        segmentId: '2',
-      ),
-      MapRoomLabel(
-        id: 'demo-bedroom',
-        name: 'Bedroom',
-        x: .33,
-        y: .68,
-        segmentId: '3',
-      ),
-      MapRoomLabel(
-        id: 'demo-hallway',
-        name: 'Hallway',
-        x: .64,
-        y: .68,
-        segmentId: '4',
-      ),
+      MapRoomLabel(id: 'demo-kitchen', name: 'Kitchen', segmentId: '1'),
+      MapRoomLabel(id: 'demo-living-room', name: 'Living room', segmentId: '2'),
+      MapRoomLabel(id: 'demo-bedroom', name: 'Bedroom', segmentId: '3'),
+      MapRoomLabel(id: 'demo-hallway', name: 'Hallway', segmentId: '4'),
     ];
     _vacuumSegments[vacuum.entityId] = const [
       VacuumSegment(id: '1', name: 'Room 1'),
@@ -541,27 +505,17 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> addMapRoomLabel(
-    String name,
-    double x,
-    double y, {
-    String? segmentId,
-  }) async {
+  Future<void> addMapRoomLabel(String name, String segmentId) async {
     final normalizedName = name.trim();
     if (normalizedName.isEmpty) {
       throw const FormatException('A room name is required.');
     }
-    final nearbyIndex = mapRoomLabels.indexWhere((label) {
-      if (segmentId != null && label.segmentId == segmentId) return true;
-      final dx = label.x - x;
-      final dy = label.y - y;
-      return dx * dx + dy * dy < .012;
-    });
+    final nearbyIndex = mapRoomLabels.indexWhere(
+      (label) => label.segmentId == segmentId,
+    );
     if (nearbyIndex >= 0) {
       mapRoomLabels[nearbyIndex] = mapRoomLabels[nearbyIndex].copyWith(
         name: normalizedName,
-        x: x,
-        y: y,
         segmentId: segmentId,
       );
     } else {
@@ -569,8 +523,6 @@ class AppState extends ChangeNotifier {
         MapRoomLabel(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
           name: normalizedName,
-          x: x,
-          y: y,
           segmentId: segmentId,
         ),
       );
@@ -591,6 +543,39 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> renameVacuum(String name) async {
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw const FormatException('A vacuum name is required.');
+    }
+    _vacuumNames[vacuum.entityId] = normalizedName;
+    vacuums[selectedVacuum] = vacuum.copyWith(name: normalizedName);
+    if (!isDemo) {
+      await _secureStorage.write(
+        key: _vacuumNamesKey,
+        value: jsonEncode(_vacuumNames),
+      );
+    }
+    notifyListeners();
+  }
+
+  VacuumEntity _withDisplayName(VacuumEntity item) {
+    final name = _vacuumNames[item.entityId];
+    return name == null ? item : item.copyWith(name: name);
+  }
+
+  void _restoreVacuumNames(String? encoded) {
+    if (encoded == null || encoded.isEmpty) return;
+    try {
+      final stored = jsonDecode(encoded) as Map<String, dynamic>;
+      _vacuumNames.addAll(
+        stored.map((key, value) => MapEntry(key, value.toString())),
+      );
+    } on Object {
+      // Ignore malformed local display names.
+    }
+  }
+
   Future<void> removeMapRoomLabel(MapRoomLabel label) async {
     mapRoomLabels.removeWhere((item) => item.id == label.id);
     await _persistRoomLabels();
@@ -605,6 +590,7 @@ class AppState extends ChangeNotifier {
         final labels = entry.value as List<dynamic>;
         _mapRoomLabels[entry.key] = labels
             .whereType<Map<String, dynamic>>()
+            .where((label) => label['segment_id'] != null)
             .map(MapRoomLabel.fromJson)
             .toList();
       }

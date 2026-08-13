@@ -922,7 +922,7 @@ void main() {
       final originalCount = state.mapRoomLabels.length;
       final kitchen = state.mapRoomLabels.first;
 
-      await state.addMapRoomLabel('Galley', kitchen.x + .01, kitchen.y + .01);
+      await state.addMapRoomLabel('Galley', kitchen.segmentId);
 
       expect(state.mapRoomLabels, hasLength(originalCount));
       expect(state.mapRoomLabels.first.name, 'Galley');
@@ -965,16 +965,14 @@ void main() {
         ),
       );
 
-      expect(find.byTooltip('Label a room'), findsNothing);
+      expect(find.byTooltip('Name a room'), findsNothing);
       expect(find.byTooltip('Zoom in'), findsNothing);
       await tester.tap(find.bySemanticsLabel('Open map full screen'));
       await tester.pumpAndSettle();
 
       expect(find.text('Orbit map'), findsOneWidget);
       expect(find.byTooltip('Zoom in'), findsOneWidget);
-      await tester.tap(find.byTooltip('Label a room'));
-      await tester.pump();
-      await tester.tap(find.text('Tap inside a room to label it'));
+      await tester.tap(find.byTooltip('Name a room'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), 'Kitchen');
       await tester.tap(find.text('Add label'));

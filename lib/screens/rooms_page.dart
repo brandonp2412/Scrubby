@@ -50,8 +50,7 @@ class _RoomsPageState extends State<RoomsPage> {
         ? const ['Quiet', 'Balanced', 'Turbo']
         : widget.state.vacuum.fanSpeeds;
     final labelsBySegment = {
-      for (final label in widget.state.mapRoomLabels)
-        if (label.segmentId != null) label.segmentId!: label,
+      for (final label in widget.state.mapRoomLabels) label.segmentId: label,
     };
     final rooms = <_RoomChoice>[
       for (final segment in widget.state.vacuumSegments)
@@ -61,13 +60,6 @@ class _RoomsPageState extends State<RoomsPage> {
           segmentId: segment.id,
           isLabelled: labelsBySegment.containsKey(segment.id),
         ),
-      for (final label in widget.state.mapRoomLabels)
-        if (label.segmentId == null)
-          _RoomChoice(
-            id: 'label:${label.id}',
-            name: label.name,
-            isLabelled: true,
-          ),
     ];
     final roomIds = rooms.map((room) => room.id).toSet();
     final activeSelection = selected.intersection(roomIds);
@@ -193,11 +185,25 @@ class _RoomsPageState extends State<RoomsPage> {
         selectedRooms.map((room) => room.segmentId!).toList(growable: false),
       );
       if (mounted) {
+        setState(selected.clear);
+        ScaffoldMessenger.of(context).clearSnackBars();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              '${widget.state.vacuum.name} is heading to ${roomNames.join(', ')}.',
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: fern,
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Cleaning started — ${roomNames.join(', ')}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
             ),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

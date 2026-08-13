@@ -294,54 +294,57 @@ class _ControlHero extends StatelessWidget {
                         ? null
                         : () => _action(context, state.toggleCleaning),
                     customBorder: const CircleBorder(),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 240),
-                      width: 174,
-                      height: 174,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: vacuum.isCleaning ? coral : mint,
-                        boxShadow: [
-                          BoxShadow(
-                            color: (vacuum.isCleaning ? coral : mint)
-                                .withValues(alpha: .18),
-                            blurRadius: 0,
-                            spreadRadius: 14,
-                          ),
-                        ],
-                      ),
-                      child: state.isBusy
-                          ? const Padding(
-                              padding: EdgeInsets.all(70),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: ink,
-                              ),
-                            )
-                          : Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  vacuum.isCleaning
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                  size: 55,
+                    child: _Heartbeat(
+                      active: vacuum.isCleaning,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 240),
+                        width: 174,
+                        height: 174,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: vacuum.isCleaning ? coral : mint,
+                          boxShadow: [
+                            BoxShadow(
+                              color: (vacuum.isCleaning ? coral : mint)
+                                  .withValues(alpha: .18),
+                              blurRadius: 0,
+                              spreadRadius: 14,
+                            ),
+                          ],
+                        ),
+                        child: state.isBusy
+                            ? const Padding(
+                                padding: EdgeInsets.all(70),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 3,
                                   color: ink,
                                 ),
-                                Text(
-                                  vacuum.isCleaning
-                                      ? 'PAUSE'
-                                      : vacuum.isPaused
-                                      ? 'RESUME'
-                                      : 'START',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.5,
+                              )
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    vacuum.isCleaning
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    size: 55,
                                     color: ink,
                                   ),
-                                ),
-                              ],
-                            ),
+                                  Text(
+                                    vacuum.isCleaning
+                                        ? 'PAUSE'
+                                        : vacuum.isPaused
+                                        ? 'RESUME'
+                                        : 'START',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.5,
+                                      color: ink,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
                   ),
                 ),
@@ -377,6 +380,54 @@ class _ControlHero extends StatelessWidget {
       ),
     );
   }
+}
+
+class _Heartbeat extends StatefulWidget {
+  const _Heartbeat({required this.active, required this.child});
+
+  final bool active;
+  final Widget child;
+
+  @override
+  State<_Heartbeat> createState() => _HeartbeatState();
+}
+
+class _HeartbeatState extends State<_Heartbeat>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1150),
+  );
+  late final Animation<double> _pulse = TweenSequence<double>([
+    TweenSequenceItem(tween: Tween(begin: 1, end: 1.055), weight: 12),
+    TweenSequenceItem(tween: Tween(begin: 1.055, end: 1), weight: 12),
+    TweenSequenceItem(tween: Tween(begin: 1, end: 1.035), weight: 10),
+    TweenSequenceItem(tween: Tween(begin: 1.035, end: 1), weight: 10),
+    TweenSequenceItem(tween: ConstantTween(1), weight: 56),
+  ]).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.active) _controller.repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _Heartbeat oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active == oldWidget.active) return;
+    widget.active ? _controller.repeat() : _controller.animateBack(0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      ScaleTransition(scale: _pulse, child: widget.child);
 }
 
 class _MiniAction extends StatelessWidget {
@@ -465,7 +516,7 @@ class _StatusColumn extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        SizedBox(height: 250, child: _HomeMapCard(state: state)),
+        SizedBox(height: 320, child: _HomeMapCard(state: state)),
         const SizedBox(height: 18),
         SurfaceCard(
           padding: EdgeInsets.zero,
@@ -526,7 +577,6 @@ class _HomeMapCard extends StatefulWidget {
 
 class _HomeMapCardState extends State<_HomeMapCard> {
   final _transformation = TransformationController();
-  bool _labelMode = false;
 
   @override
   void dispose() {
@@ -548,8 +598,7 @@ class _HomeMapCardState extends State<_HomeMapCard> {
     );
   }
 
-  Future<void> _addLabel(TapUpDetails details, Size size) async {
-    final scenePosition = _transformation.toScene(details.localPosition);
+  Future<void> _addLabel() async {
     final result = await showDialog<_RoomLabelResult>(
       context: context,
       builder: (context) => _RoomLabelDialog(
@@ -562,13 +611,7 @@ class _HomeMapCardState extends State<_HomeMapCard> {
     );
     if (result == null || !mounted) return;
     try {
-      await widget.state.addMapRoomLabel(
-        result.name,
-        (scenePosition.dx / size.width).clamp(0.05, 0.95),
-        (scenePosition.dy / size.height).clamp(0.05, 0.95),
-        segmentId: result.segmentId,
-      );
-      if (mounted) setState(() => _labelMode = false);
+      await widget.state.addMapRoomLabel(result.name, result.segmentId!);
     } catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst(
@@ -596,12 +639,14 @@ class _HomeMapCardState extends State<_HomeMapCard> {
       ),
     );
     if (result == null || !mounted) return;
-    await widget.state.addMapRoomLabel(
-      result.name,
-      label.x,
-      label.y,
-      segmentId: result.segmentId,
+    await widget.state.addMapRoomLabel(result.name, result.segmentId!);
+  }
+
+  String _segmentName(MapRoomLabel label) {
+    final index = widget.state.vacuumSegments.indexWhere(
+      (segment) => segment.id == label.segmentId,
     );
+    return index < 0 ? 'Mapped room' : 'Room ${index + 1}';
   }
 
   @override
@@ -622,153 +667,137 @@ class _HomeMapCardState extends State<_HomeMapCard> {
                   style: TextStyle(color: fern, fontWeight: FontWeight.w700),
                 ),
               )
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  final size = constraints.biggest;
-                  if (!widget.fullScreen) {
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: Image.memory(
-                            map,
-                            fit: BoxFit.contain,
-                            filterQuality: FilterQuality.high,
-                            gaplessPlayback: true,
-                          ),
-                        ),
-                        for (final label in widget.state.mapRoomLabels)
-                          Positioned(
-                            left: label.x * size.width,
-                            top: label.y * size.height,
-                            child: FractionalTranslation(
-                              translation: const Offset(-0.5, -0.5),
-                              child: Chip(
-                                label: Text(label.name),
-                                backgroundColor: Colors.white,
+            : ColoredBox(
+                color: Colors.black,
+                child: widget.fullScreen
+                    ? Stack(
+                        children: [
+                          Positioned.fill(
+                            child: InteractiveViewer(
+                              transformationController: _transformation,
+                              minScale: 1,
+                              maxScale: 5,
+                              child: Image.memory(
+                                map,
+                                fit: BoxFit.contain,
+                                filterQuality: FilterQuality.high,
+                                gaplessPlayback: true,
                               ),
                             ),
                           ),
-                      ],
-                    );
-                  }
-                  return Stack(
-                    children: [
-                      Positioned.fill(
-                        child: InteractiveViewer(
-                          transformationController: _transformation,
-                          minScale: 1,
-                          maxScale: 5,
-                          child: SizedBox.fromSize(
-                            size: size,
-                            child: Stack(
+                          Positioned(
+                            right: 12,
+                            top: 12,
+                            child: FloatingActionButton.small(
+                              heroTag: 'home-map-label',
+                              tooltip: 'Name a room',
+                              backgroundColor: Colors.white,
+                              foregroundColor: ink,
+                              onPressed: _addLabel,
+                              child: const Icon(Icons.label_outline_rounded),
+                            ),
+                          ),
+                          Positioned(
+                            right: 12,
+                            top: 68,
+                            child: Column(
                               children: [
-                                Positioned.fill(
-                                  child: Image.memory(
-                                    map,
-                                    fit: BoxFit.contain,
-                                    filterQuality: FilterQuality.high,
-                                    gaplessPlayback: true,
-                                  ),
+                                FloatingActionButton.small(
+                                  heroTag: 'home-map-plus',
+                                  tooltip: 'Zoom in',
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: ink,
+                                  onPressed: () => _zoom(1.35),
+                                  child: const Icon(Icons.add),
                                 ),
-                                for (final label in widget.state.mapRoomLabels)
-                                  Positioned(
-                                    left: label.x * size.width,
-                                    top: label.y * size.height,
-                                    child: FractionalTranslation(
-                                      translation: const Offset(-0.5, -0.5),
-                                      child: InputChip(
-                                        label: Text(label.name),
-                                        tooltip: 'Rename ${label.name}',
-                                        onPressed: () => _renameLabel(label),
-                                        onDeleted: () => widget.state
-                                            .removeMapRoomLabel(label),
-                                        deleteIcon: const Icon(
-                                          Icons.close,
-                                          size: 16,
-                                        ),
-                                        backgroundColor: Colors.white,
-                                      ),
-                                    ),
-                                  ),
+                                const SizedBox(height: 6),
+                                FloatingActionButton.small(
+                                  heroTag: 'home-map-minus',
+                                  tooltip: 'Zoom out',
+                                  backgroundColor: Colors.white,
+                                  foregroundColor: ink,
+                                  onPressed: () => _zoom(1 / 1.35),
+                                  child: const Icon(Icons.remove),
+                                ),
                               ],
                             ),
                           ),
-                        ),
+                        ],
+                      )
+                    : Image.memory(
+                        map,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                        gaplessPlayback: true,
                       ),
-                      if (_labelMode)
-                        Positioned.fill(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTapUp: (details) => _addLabel(details, size),
-                            child: Container(
-                              color: fern.withValues(alpha: .08),
-                              alignment: Alignment.bottomCenter,
-                              padding: const EdgeInsets.all(12),
-                              child: const Chip(
-                                avatar: Icon(Icons.touch_app_rounded),
-                                label: Text('Tap inside a room to label it'),
-                              ),
-                            ),
-                          ),
-                        ),
-                      Positioned(
-                        right: 12,
-                        top: 12,
-                        child: FloatingActionButton.small(
-                          heroTag: 'home-map-label',
-                          tooltip: _labelMode
-                              ? 'Cancel room label'
-                              : 'Label a room',
-                          backgroundColor: _labelMode ? fern : Colors.white,
-                          foregroundColor: _labelMode ? Colors.white : ink,
-                          onPressed: () =>
-                              setState(() => _labelMode = !_labelMode),
-                          child: Icon(
-                            _labelMode
-                                ? Icons.close
-                                : Icons.label_outline_rounded,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: 12,
-                        top: 68,
-                        child: Column(
-                          children: [
-                            FloatingActionButton.small(
-                              heroTag: 'home-map-plus',
-                              tooltip: 'Zoom in',
-                              backgroundColor: Colors.white,
-                              foregroundColor: ink,
-                              onPressed: () => _zoom(1.35),
-                              child: const Icon(Icons.add),
-                            ),
-                            const SizedBox(height: 6),
-                            FloatingActionButton.small(
-                              heroTag: 'home-map-minus',
-                              tooltip: 'Zoom out',
-                              backgroundColor: Colors.white,
-                              foregroundColor: ink,
-                              onPressed: () => _zoom(1 / 1.35),
-                              child: const Icon(Icons.remove),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
               ),
       ),
     );
-    if (widget.fullScreen) return card;
+    final roomKey = widget.state.mapRoomLabels.isEmpty
+        ? const SizedBox.shrink()
+        : Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            color: Colors.white.withValues(alpha: .82),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final label in widget.state.mapRoomLabels)
+                  GestureDetector(
+                    onTap: widget.fullScreen ? () => _renameLabel(label) : null,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cream,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: ink.withValues(alpha: .1)),
+                      ),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '${_segmentName(label)}  ',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            TextSpan(text: label.name),
+                            if (widget.fullScreen) const TextSpan(text: '  ✎'),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+    if (widget.fullScreen) {
+      return SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Expanded(child: card),
+            roomKey,
+          ],
+        ),
+      );
+    }
     return Semantics(
       button: true,
       label: 'Open map full screen',
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _openFullScreen,
-        child: card,
+        child: Column(
+          children: [
+            Expanded(child: card),
+            roomKey,
+          ],
+        ),
       ),
     );
   }

@@ -64,6 +64,16 @@ class _SettingsPageState extends State<SettingsPage> {
             subtitle:
                 'Every setting your robot exposes through Home Assistant.',
           ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('edit-vacuum-name'),
+              onPressed: () => _editVacuumName(context),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Edit vacuum name'),
+            ),
+          ),
           const SizedBox(height: 24),
           if (state.settingsLoading && state.vacuumSettings.isEmpty)
             const Center(
@@ -224,6 +234,42 @@ class _SettingsPageState extends State<SettingsPage> {
     'Care & maintenance' => Icons.build_outlined,
     _ => Icons.tune_rounded,
   };
+
+  Future<void> _editVacuumName(BuildContext context) async {
+    final controller = TextEditingController(text: state.vacuum.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit vacuum name'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 40,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(labelText: 'Vacuum name'),
+          onSubmitted: (value) {
+            if (value.trim().isNotEmpty) Navigator.pop(context, value);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(context, controller.text);
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name != null) await state.renameVacuum(name);
+  }
 }
 
 class _SettingsSearchField extends StatelessWidget {

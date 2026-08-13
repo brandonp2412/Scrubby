@@ -31,10 +31,15 @@ class VacuumEntity {
   bool get isDocked => state == 'docked' || state == 'idle';
   bool get supportsAreaCleaning => supportedFeatures & 16384 != 0;
 
-  VacuumEntity copyWith({String? state, int? battery, String? fanSpeed}) {
+  VacuumEntity copyWith({
+    String? name,
+    String? state,
+    int? battery,
+    String? fanSpeed,
+  }) {
     return VacuumEntity(
       entityId: entityId,
-      name: name,
+      name: name ?? this.name,
       state: state ?? this.state,
       battery: battery ?? this.battery,
       fanSpeed: fanSpeed ?? this.fanSpeed,
