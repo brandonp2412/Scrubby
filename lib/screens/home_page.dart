@@ -4,6 +4,7 @@ import '../core/app_state.dart';
 import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
+import 'history_page.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({
@@ -49,26 +50,35 @@ class HomePage extends StatelessWidget {
             },
           ),
           const SizedBox(height: 28),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Today at a glance',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
+          InkWell(
+            onTap: () => _openHistory(context),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Today at a glance',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'THU, 6 AUG',
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, size: 20),
+                ],
               ),
-              const SizedBox(width: 12),
-              Text(
-                'THU, 6 AUG',
-                maxLines: 1,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: .8,
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 14),
           LayoutBuilder(
@@ -85,11 +95,9 @@ class HomePage extends StatelessWidget {
                     icon: Icons.route_rounded,
                     value: '1.24 km',
                     label: 'Travelled',
-                    onTap: () => _showMetric(
+                    onTap: () => _openHistory(
                       context,
-                      title: 'Distance travelled',
-                      value: '1.24 km',
-                      detail: 'Distance covered during today’s cleaning runs.',
+                      initialMetric: HistoryMetric.travelled,
                     ),
                   ),
                   _Metric(
@@ -97,11 +105,9 @@ class HomePage extends StatelessWidget {
                     icon: Icons.square_foot_rounded,
                     value: '68 m²',
                     label: 'Cleaned',
-                    onTap: () => _showMetric(
+                    onTap: () => _openHistory(
                       context,
-                      title: 'Area cleaned',
-                      value: '68 m²',
-                      detail: 'Floor area completed by your vacuum today.',
+                      initialMetric: HistoryMetric.cleaned,
                     ),
                   ),
                   _Metric(
@@ -109,11 +115,9 @@ class HomePage extends StatelessWidget {
                     icon: Icons.timer_outlined,
                     value: '42 min',
                     label: 'Run time',
-                    onTap: () => _showMetric(
+                    onTap: () => _openHistory(
                       context,
-                      title: 'Cleaning time',
-                      value: '42 min',
-                      detail: 'Total time spent cleaning today.',
+                      initialMetric: HistoryMetric.runTime,
                     ),
                   ),
                 ],
@@ -134,30 +138,13 @@ class HomePage extends StatelessWidget {
         : 'Good evening.';
   }
 
-  void _showMetric(
+  void _openHistory(
     BuildContext context, {
-    required String title,
-    required String value,
-    required String detail,
+    HistoryMetric initialMetric = HistoryMetric.overview,
   }) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: cream,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 12),
-              Text(value, style: Theme.of(context).textTheme.displayLarge),
-              const SizedBox(height: 10),
-              Text(detail, style: Theme.of(context).textTheme.bodyMedium),
-            ],
-          ),
-        ),
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => CleaningHistoryPage(initialMetric: initialMetric),
       ),
     );
   }
@@ -874,6 +861,7 @@ class _RoomLabelDialogState extends State<_RoomLabelDialog> {
           DropdownButtonFormField<String>(
             initialValue: _segmentId,
             decoration: const InputDecoration(labelText: 'Vacuum room'),
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
             items: [
               for (final segment in widget.segments)
                 DropdownMenuItem(
@@ -890,7 +878,6 @@ class _RoomLabelDialogState extends State<_RoomLabelDialog> {
         ],
         TextField(
           controller: _controller,
-          autofocus: true,
           textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(labelText: 'Display name'),
           onSubmitted: (_) => _submit(),

@@ -901,8 +901,15 @@ void main() {
     await tester.ensureVisible(find.text('Travelled'));
     await tester.tap(find.text('Travelled'));
     await tester.pumpAndSettle();
-    expect(find.text('Distance travelled'), findsOneWidget);
-    Navigator.of(tester.element(find.text('Distance travelled'))).pop();
+    expect(find.text('Cleaning history'), findsOneWidget);
+    expect(find.text('Distance by day'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Cleaning history'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Today at a glance'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cleaning activity'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Cleaning history'))).pop();
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Rooms').last);
@@ -974,6 +981,7 @@ void main() {
       expect(find.byTooltip('Zoom in'), findsOneWidget);
       await tester.tap(find.byTooltip('Name a room'));
       await tester.pumpAndSettle();
+      expect(tester.testTextInput.hasAnyClients, isFalse);
       await tester.enterText(find.byType(TextField), 'Kitchen');
       await tester.tap(find.text('Add label'));
       await tester.pumpAndSettle();
