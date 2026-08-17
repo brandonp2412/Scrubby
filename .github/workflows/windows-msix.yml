@@ -20,7 +20,13 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter build windows --release
-      - run: dart run msix:create
+      - name: Create Store signing certificate
+        shell: pwsh
+        run: |
+          $password = ConvertTo-SecureString 'scrubby-ci-password' -AsPlainText -Force
+          $cert = New-SelfSignedCertificate -Type Custom -Subject 'CN=BB0811CB-EED5-441C-BE1B-D31F391F76DE' -KeyUsage DigitalSignature -FriendlyName 'Scrubby Store Build' -CertStoreLocation 'Cert:\CurrentUser\My'
+          Export-PfxCertificate -Cert $cert -FilePath "$env:GITHUB_WORKSPACE\scrubby-ci.pfx" -Password $password | Out-Null
+      - run: dart run msix:create --certificate-path scrubby-ci.pfx --certificate-password scrubby-ci-password
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: scrubby-msix
