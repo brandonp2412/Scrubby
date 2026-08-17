@@ -2,6 +2,8 @@ name: Windows MSIX
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['**']
 
 permissions:
   contents: read
