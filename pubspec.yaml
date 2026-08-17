@@ -49,6 +49,7 @@ dev_dependencies:
   patrol: ^4.8.0
 
   flutter_lints: ^6.0.0
+  msix: ^3.18.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -65,6 +66,18 @@ patrol:
   app_name: Scrubby
   android:
     package_name: app.scrubby.scrubby
+
+msix_config:
+  msstore_appId: 9N17TVBTJWXD
+  display_name: Scrubby
+  publisher_display_name: Brandon Dick
+  identity_name: FrisbeeSoftware.Scrubby
+  msix_version: 1.0.0.0
+  logo_path: android/app/src/main/ic_launcher-playstore.png
+  trim_logo: false
+  publisher: CN=BB0811CB-EED5-441C-BE1B-D31F391F76DE
+  store: true
+  capabilities: internetClient
 
   # To add assets to your application, add an assets section, like this:
   # assets:
