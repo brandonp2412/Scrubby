@@ -390,7 +390,15 @@ class HomeAssistantClient {
     http.Client? httpClient,
     this.heartbeatInterval = const Duration(seconds: 30),
     this.heartbeatTimeout = const Duration(seconds: 15),
-  }) : baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
+    this.connectionTimeout = const Duration(seconds: 12),
+    this.reconnectDelays = const [
+      Duration(seconds: 3),
+      Duration(seconds: 10),
+      Duration(seconds: 30),
+      Duration(minutes: 1),
+    ],
+  }) : assert(reconnectDelays.isNotEmpty),
+       baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
        _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
 
@@ -400,6 +408,8 @@ class HomeAssistantClient {
   final bool _ownsHttpClient;
   final Duration heartbeatInterval;
   final Duration heartbeatTimeout;
+  final Duration connectionTimeout;
+  final List<Duration> reconnectDelays;
   final _vacuumUpdates = StreamController<List<VacuumEntity>>.broadcast();
   final _notificationUpdates = StreamController<DreameNotification>.broadcast();
   final _connectionUpdates =
@@ -442,11 +452,7 @@ class HomeAssistantClient {
       'Managed by Scrubby. Edit this schedule in the Scrubby app.';
 
   Future<String> connect() async {
-    await _openSocket(isInitialConnection: true).timeout(
-      const Duration(seconds: 12),
-      onTimeout: () =>
-          throw Exception('Timed out while connecting to Home Assistant.'),
-    );
+    await _openSocket(isInitialConnection: true);
     return _locationName;
   }
 
@@ -505,7 +511,7 @@ class HomeAssistantClient {
     try {
       final channel = WebSocketChannel.connect(_webSocketUri);
       _channel = channel;
-      await channel.ready;
+      await channel.ready.timeout(connectionTimeout);
       _socketSubscription = channel.stream.listen(
         (message) {
           if (_closed || generation != _connectionGeneration) return;
@@ -608,11 +614,20 @@ class HomeAssistantClient {
         },
         cancelOnError: true,
       );
-      await ready.future;
+      await ready.future.timeout(connectionTimeout);
       _reconnectAttempts = 0;
       _setConnectionStatus(HomeAssistantConnectionStatus.connected);
       _startHeartbeat(generation);
     } catch (error) {
+      if (generation == _connectionGeneration) {
+        _connectionGeneration++;
+        final subscription = _socketSubscription;
+        final channel = _channel;
+        _socketSubscription = null;
+        _channel = null;
+        unawaited(subscription?.cancel() ?? Future<void>.value());
+        unawaited(channel?.sink.close() ?? Future<void>.value());
+      }
       if (isInitialConnection) rethrow;
       _scheduleReconnect();
     } finally {
@@ -797,12 +812,11 @@ class HomeAssistantClient {
           ? HomeAssistantConnectionStatus.offline
           : HomeAssistantConnectionStatus.reconnecting,
     );
-    final delay = switch (_reconnectAttempts) {
-      1 => const Duration(seconds: 3),
-      2 => const Duration(seconds: 10),
-      3 => const Duration(seconds: 30),
-      _ => const Duration(minutes: 1),
-    };
+    final delayIndex = (_reconnectAttempts - 1).clamp(
+      0,
+      reconnectDelays.length - 1,
+    );
+    final delay = reconnectDelays[delayIndex];
     _reconnectTimer = Timer(
       delay,
       () => _openSocket(isInitialConnection: false),
