@@ -101,6 +101,46 @@ class MapRoomLabel {
   );
 }
 
+class VacuumNotificationRecord {
+  const VacuumNotificationRecord({
+    required this.category,
+    required this.entityId,
+    required this.title,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final DreameNotificationCategory category;
+  final String entityId;
+  final String title;
+  final String body;
+  final DateTime createdAt;
+
+  Map<String, Object> toJson() => {
+    'category': category.name,
+    'entity_id': entityId,
+    'title': title,
+    'body': body,
+    'created_at': createdAt.toIso8601String(),
+  };
+
+  factory VacuumNotificationRecord.fromJson(Map<String, dynamic> json) {
+    final category = DreameNotificationCategory.values.firstWhere(
+      (value) => value.name == json['category'],
+      orElse: () => DreameNotificationCategory.information,
+    );
+    return VacuumNotificationRecord(
+      category: category,
+      entityId: json['entity_id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Robot information',
+      body: json['body']?.toString() ?? '',
+      createdAt:
+          DateTime.tryParse(json['created_at']?.toString() ?? '') ??
+          DateTime.now(),
+    );
+  }
+}
+
 class AppState extends ChangeNotifier {
   AppState({
     FlutterSecureStorage? secureStorage,
@@ -114,6 +154,7 @@ class AppState extends ChangeNotifier {
   static const _roomLabelsKey = 'map_room_labels';
   static const _vacuumNamesKey = 'vacuum_display_names';
   static const _scheduleOrderKey = 'schedule_order';
+  static const _notificationHistoryKey = 'notification_history';
   final FlutterSecureStorage _secureStorage;
   final VacuumNotificationPresenter _notificationPresenter;
   HomeAssistantClient? _client;
@@ -142,6 +183,7 @@ class AppState extends ChangeNotifier {
   bool settingsLoading = false;
   String? settingsError;
   final Set<String> busySettingIds = {};
+  final List<VacuumNotificationRecord> notificationHistory = [];
 
   final List<CleaningSchedule> schedules = [];
   bool schedulesLoading = false;
@@ -192,6 +234,7 @@ class AppState extends ChangeNotifier {
       final token = credentials[_tokenKey];
       _restoreRoomLabels(credentials[_roomLabelsKey]);
       _restoreVacuumNames(credentials[_vacuumNamesKey]);
+      _restoreNotificationHistory(credentials[_notificationHistoryKey]);
       if (savedUrl != null && token != null) {
         await login(savedUrl!, token, persist: false);
       }
@@ -258,6 +301,35 @@ class AppState extends ChangeNotifier {
   }
 
   void _showNotification(DreameNotification notification) {
+    final now = DateTime.now();
+    final isDuplicate = notificationHistory.any(
+      (item) =>
+          item.entityId == notification.entityId &&
+          item.category == notification.category &&
+          item.title == notification.title &&
+          item.body == notification.body &&
+          now.difference(item.createdAt).abs() < const Duration(seconds: 5),
+    );
+    if (isDuplicate) return;
+    notificationHistory.insert(
+      0,
+      VacuumNotificationRecord(
+        category: notification.category,
+        entityId: notification.entityId,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now,
+      ),
+    );
+    if (notificationHistory.length > 30) notificationHistory.removeLast();
+    unawaited(
+      _secureStorage.write(
+        key: _notificationHistoryKey,
+        value: jsonEncode(
+          notificationHistory.map((item) => item.toJson()).toList(),
+        ),
+      ),
+    );
     final matches = vacuums.where(
       (vacuum) => vacuum.entityId == notification.entityId,
     );
@@ -267,6 +339,31 @@ class AppState extends ChangeNotifier {
         vacuumName: matches.isEmpty ? null : matches.first.name,
       ),
     );
+    notifyListeners();
+  }
+
+  void _restoreNotificationHistory(String? encoded) {
+    if (encoded == null || encoded.isEmpty) return;
+    try {
+      final saved = jsonDecode(encoded) as List<dynamic>;
+      notificationHistory
+        ..clear()
+        ..addAll(
+          saved
+              .whereType<Map<String, dynamic>>()
+              .map(VacuumNotificationRecord.fromJson)
+              .take(30),
+        );
+    } catch (_) {
+      // A malformed local history must not block connection restoration.
+    }
+  }
+
+  Future<void> _reloadNotificationHistory() async {
+    _restoreNotificationHistory(
+      await _secureStorage.read(key: _notificationHistoryKey),
+    );
+    notifyListeners();
   }
 
   void _updateConnectionStatus(HomeAssistantConnectionStatus status) {
@@ -293,6 +390,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> enterForeground() async {
     await stopBackgroundNotificationService();
+    await _reloadNotificationHistory();
     if (_client != null && _notificationSubscription == null) {
       _notificationSubscription = _client!.notificationUpdates.listen(
         _showNotification,

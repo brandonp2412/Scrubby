@@ -32,9 +32,7 @@ jobs:
           test -n "$ANDROID_KEY_PASSWORD"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/upload-keystore.jks
           printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" > android/key.properties
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      - run: ./scripts/check.sh
       - run: flutter build appbundle --release
       - name: Create release checksum
         run: sha256sum build/app/outputs/bundle/release/app-release.aab > scrubby-${{ github.event.release.tag_name }}.aab.sha256
@@ -50,3 +48,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" build/app/outputs/bundle/release/app-release.aab scrubby-${{ github.event.release.tag_name }}.aab.sha256 scrubby-${{ github.event.release.tag_name }}.sbom.cdx.json --clobber
+      - name: Install Fastlane
+        run: bundle install --jobs 4 --retry 3
+      - name: Publish to Google Play
+        if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        env:
+          SUPPLY_JSON_KEY_DATA: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane android deploy aab:build/app/outputs/bundle/release/app-release.aab

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,6 +20,7 @@ abstract interface class VacuumNotificationPresenter {
 const _backgroundChannelId = 'scrubby_background_service';
 const _backgroundNotificationId = 5100;
 const _androidNotificationIcon = 'ic_bg_service_small';
+const _notificationHistoryKey = 'notification_history';
 
 bool get _supportsAndroidService =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -114,6 +116,7 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
     final vacuums = await client.fetchVacuums();
     final names = {for (final vacuum in vacuums) vacuum.entityId: vacuum.name};
     notifications = client.notificationUpdates.listen((notification) {
+      unawaited(_recordBackgroundNotification(storage, notification));
       unawaited(
         LocalVacuumNotificationPresenter.instance.show(
           notification,
@@ -123,6 +126,44 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
     });
   } catch (_) {
     await stop();
+  }
+}
+
+Future<void> _recordBackgroundNotification(
+  FlutterSecureStorage storage,
+  DreameNotification notification,
+) async {
+  try {
+    final now = DateTime.now();
+    final saved =
+        jsonDecode(await storage.read(key: _notificationHistoryKey) ?? '[]')
+            as List<dynamic>;
+    final records = saved.whereType<Map<String, dynamic>>().toList();
+    final duplicate = records.any((record) {
+      final recordedAt = DateTime.tryParse(
+        record['created_at']?.toString() ?? '',
+      );
+      return record['entity_id'] == notification.entityId &&
+          record['category'] == notification.category.name &&
+          record['title'] == notification.title &&
+          record['body'] == notification.body &&
+          recordedAt != null &&
+          now.difference(recordedAt).abs() < const Duration(seconds: 5);
+    });
+    if (duplicate) return;
+    records.insert(0, {
+      'category': notification.category.name,
+      'entity_id': notification.entityId,
+      'title': notification.title,
+      'body': notification.body,
+      'created_at': now.toIso8601String(),
+    });
+    await storage.write(
+      key: _notificationHistoryKey,
+      value: jsonEncode(records.take(30).toList()),
+    );
+  } catch (_) {
+    // A history write must never prevent the native alert from being posted.
   }
 }
 
@@ -268,7 +309,11 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
         ? notification.title
         : '$titlePrefix · ${notification.title}';
     await _plugin.show(
-      id: DateTime.now().microsecondsSinceEpoch & 0x7fffffff,
+      // The UI and Android foreground-service isolates can overlap briefly
+      // while the app is changing lifecycle state.  A stable ID means that an
+      // event received by both replaces the first native notification instead
+      // of showing it twice.
+      id: _notificationId(notification),
       title: title,
       body: notification.body,
       notificationDetails: NotificationDetails(
@@ -291,6 +336,21 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
       ),
       payload: notification.entityId,
     );
+  }
+
+  int _notificationId(DreameNotification notification) {
+    final value = [
+      notification.category.name,
+      notification.entityId,
+      notification.title,
+      notification.body,
+      notification.code,
+    ].join('\u0000');
+    var hash = 0x811c9dc5;
+    for (final codeUnit in value.codeUnits) {
+      hash = (hash ^ codeUnit) * 0x01000193 & 0x7fffffff;
+    }
+    return hash;
   }
 }
 

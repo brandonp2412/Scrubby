@@ -50,6 +50,8 @@ class HomePage extends StatelessWidget {
             },
           ),
           const SizedBox(height: 28),
+          _NotificationHistory(state: state),
+          const SizedBox(height: 28),
           InkWell(
             onTap: () => _openHistory(context),
             borderRadius: BorderRadius.circular(12),
@@ -340,24 +342,30 @@ class _ControlHero extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  _MiniAction(
-                    icon: Icons.home_rounded,
-                    label: 'Dock',
-                    onTap: () => _action(context, state.dock),
-                  ),
-                  if (vacuum.isPaused) ...[
-                    const SizedBox(width: 14),
-                    _MiniAction(
-                      icon: Icons.stop_rounded,
-                      label: 'End clean',
-                      onTap: () => _action(context, state.stopCleaning),
+                  Expanded(
+                    child: _MiniAction(
+                      icon: Icons.home_rounded,
+                      label: 'Dock',
+                      onTap: () => _action(context, state.dock),
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (vacuum.isPaused) ...[
+                    Expanded(
+                      child: _MiniAction(
+                        icon: Icons.stop_rounded,
+                        label: 'End clean',
+                        onTap: () => _action(context, state.stopCleaning),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                   ],
-                  const SizedBox(width: 14),
-                  _MiniAction(
-                    icon: Icons.volume_up_outlined,
-                    label: 'Find',
-                    onTap: () => _action(context, state.locate),
+                  Expanded(
+                    child: _MiniAction(
+                      icon: Icons.volume_up_outlined,
+                      label: 'Find',
+                      onTap: () => _action(context, state.locate),
+                    ),
                   ),
                 ],
               ),
@@ -432,11 +440,11 @@ class _MiniAction extends StatelessWidget {
     return OutlinedButton.icon(
       onPressed: onTap,
       icon: Icon(icon, size: 18),
-      label: Text(label),
+      label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
       style: OutlinedButton.styleFrom(
         foregroundColor: Colors.white70,
         side: const BorderSide(color: Colors.white24),
-        padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
       ),
     );
   }
@@ -799,12 +807,78 @@ class _FullScreenMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('${state.vacuum.name} map')),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: _HomeMapCard(state: state, fullScreen: true),
+      body: ListenableBuilder(
+        listenable: state,
+        builder: (context, _) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: _HomeMapCard(state: state, fullScreen: true),
+        ),
       ),
     );
   }
+}
+
+class _NotificationHistory extends StatelessWidget {
+  const _NotificationHistory({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final records = state.notificationHistory;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Notification history',
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 12),
+        SurfaceCard(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+          child: Column(
+            children: [
+              if (records.isEmpty)
+                const ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.notifications_none_rounded),
+                  title: Text('No notifications yet'),
+                  subtitle: Text('Robot alerts will appear here.'),
+                )
+              else
+                for (var index = 0; index < records.length; index++) ...[
+                  _NotificationRow(record: records[index]),
+                  if (index != records.length - 1) const Divider(height: 1),
+                ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NotificationRow extends StatelessWidget {
+  const _NotificationRow({required this.record});
+
+  final VacuumNotificationRecord record;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    contentPadding: EdgeInsets.zero,
+    leading: Icon(
+      switch (record.category) {
+        DreameNotificationCategory.error => Icons.error_outline_rounded,
+        DreameNotificationCategory.warning => Icons.warning_amber_rounded,
+        DreameNotificationCategory.consumable => Icons.build_outlined,
+        DreameNotificationCategory.cleanup => Icons.auto_mode_rounded,
+        DreameNotificationCategory.information => Icons.info_outline_rounded,
+      },
+      color: record.category == DreameNotificationCategory.error ? coral : fern,
+    ),
+    title: Text(record.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+    subtitle: Text(record.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+  );
 }
 
 class _RoomLabelDialog extends StatefulWidget {

@@ -1,0 +1,23 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload the signed Android App Bundle and store listing to Google Play"
+  lane :deploy do |options|
+    aab = options[:aab] || "build/app/outputs/bundle/release/app-release.aab"
+    upload_to_play_store(
+      aab: aab,
+      track: options[:track] || "production",
+      release_status: "completed",
+    )
+  end
+
+  desc "Upload only the Play Store listing, including generated screenshots"
+  lane :metadata do |options|
+    upload_to_play_store(
+      track: options[:track] || "production",
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_changelogs: false,
+    )
+  end
+end

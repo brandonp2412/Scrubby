@@ -57,7 +57,7 @@ void main() {
       final androidNotifications = FlutterLocalNotificationsPlugin()
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
-      >()!;
+          >()!;
       if (await androidNotifications.areNotificationsEnabled() != true) {
         final permission = presenter.requestPermissions();
         await Future<void>.delayed(const Duration(milliseconds: 500));

@@ -4,12 +4,14 @@ on:
   pull_request:
   push:
     branches: [master]
+    paths-ignore:
+      - 'fastlane/metadata/android/en-US/images/**'
 
 permissions:
   contents: read
 
 jobs:
-  test:
+  quality-checks:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -17,9 +19,7 @@ jobs:
         with:
           flutter-version: 3.44.8
           cache: true
-      - run: flutter pub get
-      - run: flutter analyze
-      - run: flutter test
+      - run: ./scripts/check.sh
       - run: flutter build web --release
       - run: flutter build appbundle --release
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -28,6 +28,124 @@ jobs:
           path: |
             build/web
             build/app/outputs/bundle/release/app-release.aab
+
+  generate-screenshots:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - device_type: phoneScreenshots
+            profile: pixel_6
+          - device_type: sevenInchScreenshots
+            profile: Nexus 7
+          - device_type: tenInchScreenshots
+            profile: Nexus 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.8
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Generate ${{ matrix.device_type }} screenshots
+        timeout-minutes: 25
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          SCRUBBY_DEVICE_TYPE: ${{ matrix.device_type }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: ./scripts/ci-screenshots.sh
+      - name: Upload ${{ matrix.device_type }} screenshots
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: screenshots-${{ matrix.device_type }}
+          path: fastlane/metadata/android/en-US/images/${{ matrix.device_type }}
+          if-no-files-found: error
+          retention-days: 7
+
+  patrol-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: 3.44.8
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - name: Install Patrol CLI
+        run: |
+          dart pub global activate patrol_cli 4.8.0
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run Patrol device tests
+        timeout-minutes: 25
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: patrol test -t patrol_test/notifications_test.dart
+
+  update-screenshots:
+    if: github.event_name == 'push'
+    needs: [quality-checks, generate-screenshots, patrol-tests]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download phone screenshots
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: screenshots-phoneScreenshots
+          path: fastlane/metadata/android/en-US/images/phoneScreenshots
+      - name: Download seven-inch screenshots
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: screenshots-sevenInchScreenshots
+          path: fastlane/metadata/android/en-US/images/sevenInchScreenshots
+      - name: Download ten-inch screenshots
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: screenshots-tenInchScreenshots
+          path: fastlane/metadata/android/en-US/images/tenInchScreenshots
+      - name: Commit updated store screenshots
+        run: |
+          if [ -z "$(git status --porcelain -- fastlane/metadata/android/en-US/images)" ]; then
+            echo "Store screenshots are already current."
+            exit 0
+          fi
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add fastlane/metadata/android/en-US/images
+          git commit -m "Update store screenshots [skip ci]"
+          git push
 
   sbom:
     runs-on: ubuntu-24.04
