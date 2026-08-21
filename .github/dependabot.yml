@@ -1,14 +1,34 @@
 version: 2
+
+# Keep routine dependency maintenance in one reviewable pull request instead
+# of opening a separate PR for every package manager and dependency.
+multi-ecosystem-groups:
+  dependency-updates:
+    schedule:
+      interval: monthly
+
 updates:
   - package-ecosystem: pub
     directory: /
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: dependency-updates
+    open-pull-requests-limit: 1
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: gradle
     directory: /android
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: dependency-updates
+    open-pull-requests-limit: 1
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
   - package-ecosystem: github-actions
     directory: /
-    schedule:
-      interval: weekly
+    multi-ecosystem-group: dependency-updates
+    open-pull-requests-limit: 1
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
