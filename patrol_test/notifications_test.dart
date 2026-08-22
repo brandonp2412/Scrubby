@@ -58,12 +58,7 @@ void main() {
           .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin
           >()!;
-      if (await androidNotifications.areNotificationsEnabled() != true) {
-        final permission = presenter.requestPermissions();
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        await $.platform.android.allowPermission();
-        expect(await permission, isTrue);
-      }
+      expect(await androidNotifications.areNotificationsEnabled(), isTrue);
 
       await presenter.show(notification, vacuumName: 'Orbit');
 

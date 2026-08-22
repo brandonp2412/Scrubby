@@ -110,7 +110,22 @@ jobs:
           arch: x86_64
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: patrol test -t patrol_test/notifications_test.dart
+          script: |
+            (
+              for attempt in $(seq 1 180); do
+                if adb shell pm path app.scrubby.scrubby >/dev/null 2>&1; then
+                  adb shell pm grant app.scrubby.scrubby android.permission.POST_NOTIFICATIONS
+                  exit 0
+                fi
+                sleep 2
+              done
+              exit 1
+            ) &
+            permission_pid=$!
+            patrol_status=0
+            patrol test -t patrol_test/notifications_test.dart || patrol_status=$?
+            wait "$permission_pid" || true
+            exit "$patrol_status"
 
   update-screenshots:
     if: github.event_name == 'push'
