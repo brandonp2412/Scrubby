@@ -68,7 +68,9 @@ jobs:
           arch: x86_64
           profile: ${{ matrix.profile }}
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          script: ./scripts/ci-screenshots.sh
+          script: >-
+            ./scripts/ci-screenshots.sh ||
+            { adb reconnect offline || true; adb wait-for-device; ./scripts/ci-screenshots.sh; }
       - name: Upload ${{ matrix.device_type }} screenshots
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -92,7 +94,7 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - name: Install Patrol CLI
         run: |
-          dart pub global activate patrol_cli 4.7.0
+          dart pub global activate patrol_cli 4.8.0
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
       - name: Enable KVM
         run: |
