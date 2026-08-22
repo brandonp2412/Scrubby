@@ -61,7 +61,7 @@ void main() {
       if (await androidNotifications.areNotificationsEnabled() != true) {
         final permission = presenter.requestPermissions();
         await Future<void>.delayed(const Duration(milliseconds: 500));
-        await $.platform.mobile.grantPermissionWhenInUse();
+        await $.platform.android.allowPermission();
         expect(await permission, isTrue);
       }
 
