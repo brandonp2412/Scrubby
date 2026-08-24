@@ -1,0 +1,31 @@
+name: Sync Google Play listing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "fastlane/metadata/android/**"
+      - "fastlane/Fastfile"
+      - "fastlane/Appfile"
+      - ".github/workflows/google-play-metadata.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: google-play-metadata
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    env:
+      SUPPLY_JSON_KEY_DATA: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - run: bundle exec fastlane android metadata track:production
