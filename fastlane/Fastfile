@@ -4,10 +4,15 @@ platform :android do
   desc "Upload the signed Android App Bundle and store listing to Google Play"
   lane :deploy do |options|
     aab = options[:aab] || "build/app/outputs/bundle/release/app-release.aab"
+    track = options[:track] || "production"
+    metadata(track: track)
     upload_to_play_store(
       aab: aab,
-      track: options[:track] || "production",
+      track: track,
       release_status: "completed",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
     )
   end
 
@@ -17,7 +22,10 @@ platform :android do
       track: options[:track] || "production",
       skip_upload_apk: true,
       skip_upload_aab: true,
-      skip_upload_changelogs: false,
+      skip_upload_changelogs: true,
+      skip_upload_metadata: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false
     )
   end
 end
