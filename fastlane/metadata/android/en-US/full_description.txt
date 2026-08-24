@@ -1,6 +1,19 @@
-Scrubby is a focused companion for robot vacuums connected to your Home
-Assistant server. Start and pause cleaning, check progress and battery, manage
-rooms, view compatible maps, control device settings, and plan schedules.
+Give your Home Assistant robot vacuum a focused, easy-to-use control panel.
 
-Scrubby connects directly to the Home Assistant server you choose. It does not
-operate a cloud service or include advertising or analytics.
+Scrubby connects to the Home Assistant server you choose and turns compatible robot vacuum entities into a purpose-built cleaning dashboard. Start or pause a clean, check battery and progress, view maps, manage rooms, and plan schedules without digging through a general smart-home interface.
+
+CONTROL YOUR CLEANING
+
+• Start, pause, return to base, and locate compatible robot vacuums
+• See live cleaning state, battery level, and fan speed
+• View compatible floor maps
+• Label rooms and start supported room-cleaning actions
+• Create and manage cleaning schedules
+• Access compatible vacuum settings exposed by Home Assistant
+• Receive Android notifications for supported Dreame vacuum events
+
+CONNECT DIRECTLY TO HOME ASSISTANT
+
+Enter your Home Assistant URL and long-lived access token to connect. Scrubby communicates directly with your server; it does not run its own cloud service and includes no ads or analytics. You can also explore the complete interface with demo data before connecting a real home.
+
+Compatibility depends on the entities and services exposed by your Home Assistant installation and vacuum integration. Scrubby is an independent project and is not affiliated with, endorsed by, or sponsored by Home Assistant or Dreame.
