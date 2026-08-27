@@ -206,7 +206,6 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -263,14 +262,6 @@ jobs:
           retention-days: 7
           name: android-builds
           path: release/android/*
-      - name: Install Fastlane
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
-        run: bundle install --jobs 4 --retry 3
-      - name: Publish to Google Play
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
-        env:
-          SUPPLY_JSON_KEY_DATA: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: bundle exec fastlane android deploy aab:build/app/outputs/bundle/release/app-release.aab
 
   build-linux:
     needs: version-bump
@@ -357,6 +348,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  deploy-google-play:
+    needs: [build-android, create-github-release]
+    runs-on: ubuntu-24.04
+    env:
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Download Android artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: android-builds
+          path: android-release
+      - name: Install Fastlane
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        run: bundle install --jobs 4 --retry 3
+      - name: Publish to Google Play
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        env:
+          SUPPLY_JSON_KEY_DATA: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane android deploy aab:android-release/app-release.aab
+
   deploy-windows-store:
     needs: [build-windows, create-github-release]
     runs-on: windows-latest
@@ -370,7 +382,12 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: windows-builds
-          path: store-package
+          path: windows-release
+      - name: Prepare Microsoft Store input
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path store-package | Out-Null
+          Get-ChildItem windows-release -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Copy-Item -Destination store-package/
       - name: Setup .NET 9.0
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         uses: actions/setup-dotnet@v4
