@@ -116,6 +116,14 @@ class VacuumNotificationRecord {
   final String body;
   final DateTime createdAt;
 
+  /// Home Assistant's persistent notification UI stores notifications in a
+  /// map keyed by notification ID. Dreame's non-cleanup events represent those
+  /// persistent conditions, so an identical condition should occupy one row.
+  String? get persistentIdentity =>
+      category == DreameNotificationCategory.cleanup
+      ? null
+      : [category.name, entityId, title, body].join('\u0000');
+
   Map<String, Object> toJson() => {
     'category': category.name,
     'entity_id': entityId,
@@ -302,7 +310,7 @@ class AppState extends ChangeNotifier {
 
   void _showNotification(DreameNotification notification) {
     final now = DateTime.now();
-    final isDuplicate = notificationHistory.any(
+    final isRecentDuplicate = notificationHistory.any(
       (item) =>
           item.entityId == notification.entityId &&
           item.category == notification.category &&
@@ -310,26 +318,24 @@ class AppState extends ChangeNotifier {
           item.body == notification.body &&
           now.difference(item.createdAt).abs() < const Duration(seconds: 5),
     );
-    if (isDuplicate) return;
-    notificationHistory.insert(
-      0,
-      VacuumNotificationRecord(
-        category: notification.category,
-        entityId: notification.entityId,
-        title: notification.title,
-        body: notification.body,
-        createdAt: now,
-      ),
+    if (isRecentDuplicate) return;
+
+    final record = VacuumNotificationRecord(
+      category: notification.category,
+      entityId: notification.entityId,
+      title: notification.title,
+      body: notification.body,
+      createdAt: now,
     );
+    final persistentIdentity = record.persistentIdentity;
+    if (persistentIdentity != null) {
+      notificationHistory.removeWhere(
+        (item) => item.persistentIdentity == persistentIdentity,
+      );
+    }
+    notificationHistory.insert(0, record);
     if (notificationHistory.length > 30) notificationHistory.removeLast();
-    unawaited(
-      _secureStorage.write(
-        key: _notificationHistoryKey,
-        value: jsonEncode(
-          notificationHistory.map((item) => item.toJson()).toList(),
-        ),
-      ),
-    );
+    unawaited(_persistNotificationHistory());
     final matches = vacuums.where(
       (vacuum) => vacuum.entityId == notification.entityId,
     );
@@ -346,18 +352,35 @@ class AppState extends ChangeNotifier {
     if (encoded == null || encoded.isEmpty) return;
     try {
       final saved = jsonDecode(encoded) as List<dynamic>;
-      notificationHistory
-        ..clear()
-        ..addAll(
-          saved
-              .whereType<Map<String, dynamic>>()
-              .map(VacuumNotificationRecord.fromJson)
-              .take(30),
-        );
+      final restored = saved
+          .whereType<Map<String, dynamic>>()
+          .map(VacuumNotificationRecord.fromJson)
+          .toList(growable: false);
+      final seenPersistent = <String>{};
+      notificationHistory.clear();
+      for (final item in restored) {
+        final persistentIdentity = item.persistentIdentity;
+        if (persistentIdentity != null &&
+            !seenPersistent.add(persistentIdentity)) {
+          continue;
+        }
+        notificationHistory.add(item);
+        if (notificationHistory.length == 30) break;
+      }
+      if (notificationHistory.length != restored.take(30).length) {
+        unawaited(_persistNotificationHistory());
+      }
     } catch (_) {
       // A malformed local history must not block connection restoration.
     }
   }
+
+  Future<void> _persistNotificationHistory() => _secureStorage.write(
+    key: _notificationHistoryKey,
+    value: jsonEncode(
+      notificationHistory.map((item) => item.toJson()).toList(),
+    ),
+  );
 
   Future<void> _reloadNotificationHistory() async {
     _restoreNotificationHistory(
