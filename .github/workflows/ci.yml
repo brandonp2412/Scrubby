@@ -128,30 +128,25 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download phone screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: screenshots-phoneScreenshots
           path: fastlane/metadata/android/en-US/images/phoneScreenshots
-
       - name: Download seven-inch screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: screenshots-sevenInchScreenshots
           path: fastlane/metadata/android/en-US/images/sevenInchScreenshots
-
       - name: Download ten-inch screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: screenshots-tenInchScreenshots
           path: fastlane/metadata/android/en-US/images/tenInchScreenshots
-
       - name: Configure Git
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-
       - name: Bump versions and generate changelog
         id: bump
         run: |
@@ -168,13 +163,11 @@ jobs:
 
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "build_number=$NEW_BUILD" >> "$GITHUB_OUTPUT"
-
           sed -i "s/^version: .*/version: $NEW_VERSION+$NEW_BUILD/" pubspec.yaml
           sed -i "s/msix_version: .*/msix_version: $NEW_MSIX/" pubspec.yaml
 
           CHANGELOG_FILE="fastlane/metadata/android/en-US/changelogs/$NEW_BUILD.txt"
           mkdir -p "$(dirname "$CHANGELOG_FILE")"
-
           LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$LAST_TAG" ]; then
             git --no-pager log --pretty=format:'%s' "$LAST_TAG"..HEAD
@@ -187,15 +180,11 @@ jobs:
             | grep -v '\[skip ci\]' \
             | head -10 \
             | sed 's/^/• /' > "$CHANGELOG_FILE"
-
           [ -s "$CHANGELOG_FILE" ] || echo '• Bug fixes and improvements' > "$CHANGELOG_FILE"
 
-          mkdir -p fastlane/metadata/en-AU
+          mkdir -p fastlane/metadata/en-AU assets/changelogs
           cp "$CHANGELOG_FILE" fastlane/metadata/en-AU/release_notes.txt
-
-          mkdir -p assets/changelogs
           cp "$CHANGELOG_FILE" "assets/changelogs/$(date +%s).txt"
-
       - name: Commit, tag, and push the tested release
         id: release
         run: |
@@ -260,17 +249,20 @@ jobs:
           path: .
           format: cyclonedx-json
           output-file: scrubby-${{ needs.version-bump.outputs.version }}.sbom.cdx.json
+      - name: Stage Android release files
+        run: |
+          mkdir -p release/android
+          cp build/app/outputs/flutter-apk/app-*-release.apk release/android/
+          cp build/app/outputs/flutter-apk/scrubby.apk release/android/
+          cp build/app/outputs/bundle/release/app-release.aab release/android/
+          cp scrubby-${{ needs.version-bump.outputs.version }}.android.sha256 release/android/
+          cp scrubby-${{ needs.version-bump.outputs.version }}.sbom.cdx.json release/android/
       - name: Upload Android artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           retention-days: 7
           name: android-builds
-          path: |
-            build/app/outputs/flutter-apk/app-*-release.apk
-            build/app/outputs/flutter-apk/scrubby.apk
-            build/app/outputs/bundle/release/app-release.aab
-            scrubby-${{ needs.version-bump.outputs.version }}.android.sha256
-            scrubby-${{ needs.version-bump.outputs.version }}.sbom.cdx.json
+          path: release/android/*
       - name: Install Fastlane
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
         run: bundle install --jobs 4 --retry 3
@@ -327,15 +319,19 @@ jobs:
         run: Compress-Archive -Path ./build/windows/x64/runner/Release/* -DestinationPath ./scrubby-windows.zip
       - name: Build MSIX
         run: dart run msix:create
+      - name: Stage Windows release files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release/windows | Out-Null
+          Copy-Item scrubby-windows.zip release/windows/
+          Get-ChildItem build/windows/x64/runner/Release -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Copy-Item -Destination release/windows/
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           retention-days: 7
           name: windows-builds
-          path: |
-            scrubby-windows.zip
-            build/windows/x64/runner/Release/*.msix
-            build/windows/x64/runner/Release/*.msixupload
+          path: release/windows/*
+          if-no-files-found: error
 
   create-github-release:
     needs: [version-bump, build-android, build-linux, build-windows]
@@ -355,22 +351,14 @@ jobs:
           name: ${{ needs.version-bump.outputs.version }}
           body_path: fastlane/metadata/en-AU/release_notes.txt
           files: |
-            android-builds/app-arm64-v8a-release.apk
-            android-builds/app-armeabi-v7a-release.apk
-            android-builds/app-x86_64-release.apk
-            android-builds/scrubby.apk
-            android-builds/app-release.aab
-            android-builds/scrubby-${{ needs.version-bump.outputs.version }}.android.sha256
-            android-builds/scrubby-${{ needs.version-bump.outputs.version }}.sbom.cdx.json
+            android-builds/*
             linux-builds/scrubby-linux.zip
-            windows-builds/scrubby-windows.zip
-            windows-builds/*.msix
-            windows-builds/*.msixupload
+            windows-builds/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   deploy-windows-store:
-    needs: [version-bump, build-windows, create-github-release]
+    needs: [build-windows, create-github-release]
     runs-on: windows-latest
     env:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
