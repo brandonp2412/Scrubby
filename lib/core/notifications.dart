@@ -139,18 +139,31 @@ Future<void> _recordBackgroundNotification(
         jsonDecode(await storage.read(key: _notificationHistoryKey) ?? '[]')
             as List<dynamic>;
     final records = saved.whereType<Map<String, dynamic>>().toList();
-    final duplicate = records.any((record) {
-      final recordedAt = DateTime.tryParse(
-        record['created_at']?.toString() ?? '',
-      );
-      return record['entity_id'] == notification.entityId &&
-          record['category'] == notification.category.name &&
-          record['title'] == notification.title &&
-          record['body'] == notification.body &&
-          recordedAt != null &&
-          now.difference(recordedAt).abs() < const Duration(seconds: 5);
-    });
-    if (duplicate) return;
+
+    bool matches(Map<String, dynamic> record) =>
+        record['entity_id'] == notification.entityId &&
+        record['category'] == notification.category.name &&
+        record['title'] == notification.title &&
+        record['body'] == notification.body;
+
+    // Home Assistant persistent notifications are keyed and updated in place,
+    // rather than appended every time an integration emits the same condition.
+    // Dreame re-emits consumable/warning events (for example after each cleanup),
+    // so mirror HA's behaviour for every non-cleanup notification family.
+    if (notification.category != DreameNotificationCategory.cleanup) {
+      records.removeWhere(matches);
+    } else {
+      final duplicate = records.any((record) {
+        if (!matches(record)) return false;
+        final recordedAt = DateTime.tryParse(
+          record['created_at']?.toString() ?? '',
+        );
+        return recordedAt != null &&
+            now.difference(recordedAt).abs() < const Duration(seconds: 5);
+      });
+      if (duplicate) return;
+    }
+
     records.insert(0, {
       'category': notification.category.name,
       'entity_id': notification.entityId,
