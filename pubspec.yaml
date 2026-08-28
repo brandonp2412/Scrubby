@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.4+5
+version: 1.0.5+6
 
 environment:
   sdk: ^3.12.2
@@ -72,7 +72,7 @@ msix_config:
   display_name: Scrubby
   publisher_display_name: Brandon Dick
   identity_name: FrisbeeSoftware.Scrubby
-  msix_version: 1.0.4.0
+  msix_version: 1.0.5.0
   logo_path: android/app/src/main/ic_launcher-playstore.png
   trim_logo: false
   publisher: CN=BB0811CB-EED5-441C-BE1B-D31F391F76DE
