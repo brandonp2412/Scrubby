@@ -191,12 +191,59 @@ jobs:
           cp "$CHANGELOG_FILE" "assets/changelogs/$(date +%s).txt"
       - name: Commit, tag, and push the tested release
         id: release
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
         run: |
+          set -euo pipefail
+          BASE_SHA=$(git rev-parse HEAD)
+
           git add pubspec.yaml fastlane/metadata assets/changelogs
-          git commit -m "Release ${{ steps.bump.outputs.version }} [skip ci]"
-          git tag "${{ steps.bump.outputs.version }}"
-          git push --atomic origin HEAD:main "refs/tags/${{ steps.bump.outputs.version }}"
-          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git commit -m "Release $VERSION [skip ci]"
+
+          # A long-running release can overlap a harmless [skip ci] metadata/docs
+          # push. Rebase over those changes instead of failing with a stale-main
+          # non-fast-forward, but never release untested application changes.
+          for attempt in 1 2 3; do
+            git fetch origin main
+            REMOTE_MAIN=$(git rev-parse origin/main)
+
+            if [ "$REMOTE_MAIN" != "$BASE_SHA" ]; then
+              if ! git merge-base --is-ancestor "$BASE_SHA" "$REMOTE_MAIN"; then
+                echo "::error::main history diverged while preparing release $VERSION"
+                exit 1
+              fi
+
+              UNSAFE_COMMITS=$(git log --format='%H %s' "$BASE_SHA..$REMOTE_MAIN" | grep -v '\[skip ci\]' || true)
+              if [ -n "$UNSAFE_COMMITS" ]; then
+                echo "::error::main advanced with untested commits; a newer CI run must release them"
+                printf '%s\n' "$UNSAFE_COMMITS"
+                exit 1
+              fi
+
+              UNSAFE_PATHS=$(git diff --name-only "$BASE_SHA" "$REMOTE_MAIN" | grep -Ev '^(\.github/|fastlane/metadata/android/en-US/images/|assets/changelogs/|AGENTS\.md$|[^/]+\.md$)' || true)
+              if [ -n "$UNSAFE_PATHS" ]; then
+                echo "::error::main advanced with [skip ci] changes that affect release inputs"
+                printf '%s\n' "$UNSAFE_PATHS"
+                exit 1
+              fi
+
+              git rebase "$REMOTE_MAIN"
+              BASE_SHA="$REMOTE_MAIN"
+            fi
+
+            git tag -f "$VERSION"
+            if git push --atomic origin HEAD:main "refs/tags/$VERSION"; then
+              echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            git tag -d "$VERSION" || true
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::main kept changing while publishing release $VERSION"
+              exit 1
+            fi
+            sleep $((attempt * 2))
+          done
 
   build-android:
     needs: version-bump
