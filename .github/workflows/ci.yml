@@ -172,7 +172,7 @@ jobs:
 
           CHANGELOG_FILE="fastlane/metadata/android/en-US/changelogs/$NEW_BUILD.txt"
           mkdir -p "$(dirname "$CHANGELOG_FILE")"
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
           if [ -n "$LAST_TAG" ]; then
             git --no-pager log --pretty=format:'%s' "$LAST_TAG"..HEAD
           else
@@ -184,7 +184,7 @@ jobs:
             | grep -v '\[skip ci\]' \
             | head -10 \
             | sed 's/^/• /' > "$CHANGELOG_FILE"
-          [ -s "$CHANGELOG_FILE" ] || echo '• Bug fixes and improvements' > "$CHANGELOG_FILE"
+          [ -s "$CHANGELOG_FILE" ] || printf '%s\n' '• Bug fixes and improvements' > "$CHANGELOG_FILE"
 
           mkdir -p fastlane/metadata/en-AU assets/changelogs
           cp "$CHANGELOG_FILE" fastlane/metadata/en-AU/release_notes.txt
@@ -200,9 +200,6 @@ jobs:
           git add pubspec.yaml fastlane/metadata assets/changelogs
           git commit -m "Release $VERSION [skip ci]"
 
-          # A long-running release can overlap a harmless [skip ci] metadata/docs
-          # push. Rebase over those changes instead of failing with a stale-main
-          # non-fast-forward, but never release untested application changes.
           for attempt in 1 2 3; do
             git fetch origin main
             REMOTE_MAIN=$(git rev-parse origin/main)
@@ -254,9 +251,10 @@ jobs:
       id-token: write
     env:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD || secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && (secrets.ANDROID_STORE_PASSWORD != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '') && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -270,13 +268,13 @@ jobs:
           flutter-version: 3.44.8
           cache: true
       - name: Configure Android upload signing
+        if: env.ANDROID_SIGNING_READY == 'true'
         run: |
-          test -n "$ANDROID_KEYSTORE_BASE64"
-          test -n "$ANDROID_KEYSTORE_PASSWORD"
-          test -n "$ANDROID_KEY_ALIAS"
-          test -n "$ANDROID_KEY_PASSWORD"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
-          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" > android/key.properties
+          printf 'storeFile=upload-keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" > android/key.properties
+      - name: Note unsigned Android build
+        if: env.ANDROID_SIGNING_READY != 'true'
+        run: echo "::notice::Android signing secrets are not configured; GitHub release artifacts will be unsigned and Google Play publishing will be skipped."
       - run: flutter pub get --enforce-lockfile
       - name: Build Android release artifacts
         run: |
@@ -403,7 +401,8 @@ jobs:
     needs: [build-android, create-github-release]
     runs-on: ubuntu-24.04
     env:
-      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_PLAY_JSON_KEY }}
+      ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && (secrets.ANDROID_STORE_PASSWORD != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '') && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Download Android artifacts
@@ -412,13 +411,16 @@ jobs:
           name: android-builds
           path: android-release
       - name: Install Fastlane
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
         run: bundle install --jobs 4 --retry 3
       - name: Publish to Google Play
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != ''
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
         env:
           SUPPLY_JSON_KEY_DATA: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: bundle exec fastlane android deploy aab:android-release/app-release.aab
+      - name: Skip Google Play publish
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == '' || env.ANDROID_SIGNING_READY != 'true'
+        run: echo "::notice::Google Play publishing skipped because Play credentials or Android signing credentials are not configured."
 
   deploy-windows-store:
     needs: [build-windows, create-github-release]
@@ -427,7 +429,7 @@ jobs:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-      SELLER_ID: ${{ secrets.SELLER_ID }}
+      SELLER_ID: ${{ secrets.SELLER_ID || secrets.MSSTORE_SELLER_ID }}
     steps:
       - name: Download Windows artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
@@ -453,6 +455,9 @@ jobs:
       - name: Publish to Microsoft Store
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         run: msstore publish --inputDirectory store-package --appId 9N17TVBTJWXD --packageRolloutPercentage 100
+      - name: Skip Microsoft Store publish
+        if: env.AZURE_TENANT_ID == '' || env.AZURE_CLIENT_ID == '' || env.AZURE_CLIENT_SECRET == '' || env.SELLER_ID == ''
+        run: Write-Host "::notice::Microsoft Store publishing skipped because Store credentials are not configured."
 
   sbom:
     if: github.event_name != 'push'
