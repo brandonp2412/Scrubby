@@ -1,0 +1,10 @@
+• Add Windows MSIX store packaging
+• Add all settings from dreamhome settings
+• Add histories & reduce jank of labelling
+• Add launch.json for vscode
+• Add logout confirm
+• Add notifications
+• Add patrol test for notifications
+• Add settings to schedules
+• Add websocket heartbeat
+• Clean up background service log error
