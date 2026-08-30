@@ -425,6 +425,9 @@ jobs:
   deploy-windows-store:
     needs: [version-bump, build-windows, create-github-release]
     runs-on: windows-latest
+    permissions:
+      actions: write
+      contents: read
     env:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
@@ -463,6 +466,24 @@ jobs:
             throw 'No MSIX or MSIXUPLOAD package was downloaded.'
           }
           msstore publish . --inputDirectory store-package --appId 9N17TVBTJWXD --packageRolloutPercentage 100 --uploadTimeout 600 --verbose
+      - name: Start Microsoft Store finalization checks
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const workflowId = 'finalize-msstore-rollout.yml';
+            await github.rest.actions.enableWorkflow({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+            });
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: workflowId,
+              ref: 'main',
+            });
       - name: Skip Microsoft Store publish
         if: env.AZURE_TENANT_ID == '' || env.AZURE_CLIENT_ID == '' || env.AZURE_CLIENT_SECRET == '' || env.SELLER_ID == ''
         run: Write-Host "::notice::Microsoft Store publishing skipped because Store credentials are not configured."
