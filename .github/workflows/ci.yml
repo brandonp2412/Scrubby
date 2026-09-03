@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: 3.44.8
@@ -48,7 +49,9 @@ jobs:
             profile: Nexus 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-java@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: zulu
           java-version: '17'
@@ -64,7 +67,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Generate ${{ matrix.device_type }} screenshots
         timeout-minutes: 25
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         env:
           SCRUBBY_DEVICE_TYPE: ${{ matrix.device_type }}
         with:
@@ -88,7 +91,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: actions/setup-java@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: zulu
           java-version: '17'
@@ -108,7 +113,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Run Patrol device tests
         timeout-minutes: 25
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 35
           target: google_apis
@@ -131,7 +136,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
       - name: Download phone screenshots
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -193,12 +198,14 @@ jobs:
         id: release
         env:
           VERSION: ${{ steps.bump.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           BASE_SHA=$(git rev-parse HEAD)
 
           git add pubspec.yaml fastlane/metadata assets/changelogs
           git commit -m "Release $VERSION [skip ci]"
+          gh auth setup-git
 
           for attempt in 1 2 3; do
             git fetch origin main
@@ -259,7 +266,8 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
-      - uses: actions/setup-java@v5
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: zulu
           java-version: '17'
@@ -319,6 +327,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: 3.44.8
@@ -347,6 +356,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
+          persist-credentials: false
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: 3.44.8
@@ -382,10 +392,11 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
+          persist-credentials: false
       - name: Download all artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.version-bump.outputs.version }}
           name: ${{ needs.version-bump.outputs.version }}
@@ -405,6 +416,8 @@ jobs:
       ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && (secrets.ANDROID_STORE_PASSWORD != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '') && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - name: Download Android artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -437,6 +450,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
+          persist-credentials: false
       - name: Download Windows artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -449,12 +463,12 @@ jobs:
           Get-ChildItem windows-release -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Copy-Item -Destination store-package/
       - name: Setup .NET 9.0
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '9.0.x'
       - name: Setup Microsoft Store CLI
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: microsoft/setup-msstore-cli@v1
+        uses: microsoft/setup-msstore-cli@3b2ec9136230357ce9abc02b9d056626fb248d3f # v1
       - name: Configure Microsoft Store CLI
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         run: msstore reconfigure --tenantId $env:AZURE_TENANT_ID --clientId $env:AZURE_CLIENT_ID --clientSecret $env:AZURE_CLIENT_SECRET --sellerId $env:SELLER_ID
@@ -468,7 +482,7 @@ jobs:
           msstore publish . --inputDirectory store-package --appId 9N17TVBTJWXD --packageRolloutPercentage 100 --uploadTimeout 600 --verbose
       - name: Start Microsoft Store finalization checks
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -493,6 +507,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
