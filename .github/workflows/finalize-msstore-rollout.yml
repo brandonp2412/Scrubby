@@ -23,14 +23,16 @@ jobs:
       SELLER_ID: ${{ secrets.SELLER_ID || secrets.MSSTORE_SELLER_ID }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Setup .NET 9.0
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: "9.0.x"
 
       - name: Setup Microsoft Store CLI
-        uses: microsoft/setup-msstore-cli@v1
+        uses: microsoft/setup-msstore-cli@3b2ec9136230357ce9abc02b9d056626fb248d3f # v1
 
       - name: Configure Microsoft Store CLI
         shell: pwsh
@@ -43,7 +45,7 @@ jobs:
 
       - name: Disable finalization checks until the next Store publish
         if: steps.finalize.outputs.finalized == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
