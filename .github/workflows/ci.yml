@@ -80,7 +80,7 @@ jobs:
             ./scripts/ci-screenshots.sh ||
             { adb reconnect offline || true; adb wait-for-device; ./scripts/ci-screenshots.sh; }
       - name: Upload ${{ matrix.device_type }} screenshots
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: screenshots-${{ matrix.device_type }}
           path: fastlane/metadata/android/en-US/images/${{ matrix.device_type }}
@@ -138,17 +138,17 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Download phone screenshots
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: screenshots-phoneScreenshots
           path: fastlane/metadata/android/en-US/images/phoneScreenshots
       - name: Download seven-inch screenshots
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: screenshots-sevenInchScreenshots
           path: fastlane/metadata/android/en-US/images/sevenInchScreenshots
       - name: Download ten-inch screenshots
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: screenshots-tenInchScreenshots
           path: fastlane/metadata/android/en-US/images/tenInchScreenshots
@@ -314,7 +314,7 @@ jobs:
           cp scrubby-${{ needs.version-bump.outputs.version }}.android.sha256 release/android/
           cp scrubby-${{ needs.version-bump.outputs.version }}.sbom.cdx.json release/android/
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           retention-days: 7
           name: android-builds
@@ -343,7 +343,7 @@ jobs:
           cd build/linux/x64/release/bundle
           zip -r scrubby-linux.zip .
       - name: Upload Linux artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           retention-days: 7
           name: linux-builds
@@ -376,7 +376,7 @@ jobs:
           Copy-Item scrubby-windows.zip release/windows/
           Get-ChildItem build/windows/x64/runner/Release -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Copy-Item -Destination release/windows/
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           retention-days: 7
           name: windows-builds
@@ -394,9 +394,9 @@ jobs:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
           persist-credentials: false
       - name: Download all artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ needs.version-bump.outputs.version }}
           name: ${{ needs.version-bump.outputs.version }}
@@ -419,7 +419,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Download Android artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: android-builds
           path: android-release
@@ -439,7 +439,6 @@ jobs:
     needs: [version-bump, build-windows, create-github-release]
     runs-on: windows-latest
     permissions:
-      actions: write
       contents: read
     env:
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -452,7 +451,7 @@ jobs:
           ref: ${{ needs.version-bump.outputs.commit_sha }}
           persist-credentials: false
       - name: Download Windows artifacts
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: windows-builds
           path: windows-release
@@ -463,41 +462,37 @@ jobs:
           Get-ChildItem windows-release -File | Where-Object { $_.Extension -in '.msix', '.msixupload' } | Copy-Item -Destination store-package/
       - name: Setup .NET 9.0
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: '9.0.x'
       - name: Setup Microsoft Store CLI
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: microsoft/setup-msstore-cli@3b2ec9136230357ce9abc02b9d056626fb248d3f # v1
+        uses: microsoft/setup-msstore-cli@cc9910a8d59f2eb55cbb83df0a3800cf3b5300e0 # v1.4
       - name: Configure Microsoft Store CLI
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         run: msstore reconfigure --tenantId $env:AZURE_TENANT_ID --clientId $env:AZURE_CLIENT_ID --clientSecret $env:AZURE_CLIENT_SECRET --sellerId $env:SELLER_ID
+      - name: Prepare Microsoft Store for submission
+        timeout-minutes: 45
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
+        shell: pwsh
+        run: ./scripts/finalize-msstore-rollout.ps1 -ProductId "9N17TVBTJWXD"
       - name: Publish to Microsoft Store
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         shell: pwsh
         run: |
-          if (-not (Get-ChildItem store-package -File | Where-Object { $_.Extension -in '.msix', '.msixupload' })) {
-            throw 'No MSIX or MSIXUPLOAD package was downloaded.'
+          $packages = @(Get-ChildItem store-package -File | Where-Object { $_.Extension -in '.msix', '.msixupload' })
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one MSIX or MSIXUPLOAD package, found $($packages.Count)."
           }
-          msstore publish . --inputDirectory store-package --appId 9N17TVBTJWXD --packageRolloutPercentage 100 --uploadTimeout 600 --verbose
-      - name: Start Microsoft Store finalization checks
-        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const workflowId = 'finalize-msstore-rollout.yml';
-            await github.rest.actions.enableWorkflow({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: workflowId,
-            });
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: workflowId,
-              ref: 'main',
-            });
+          $packageDirectory = $packages[0].Directory.FullName
+          & msstore publish . --inputDirectory $packageDirectory --appId 9N17TVBTJWXD --uploadTimeout 600 --verbose
+          if ($LASTEXITCODE -ne 0) {
+            throw "Microsoft Store publish failed with exit code $LASTEXITCODE."
+          }
+          & msstore submission status 9N17TVBTJWXD
+          if ($LASTEXITCODE -ne 0) {
+            throw "Microsoft Store submission status verification failed with exit code $LASTEXITCODE."
+          }
       - name: Skip Microsoft Store publish
         if: env.AZURE_TENANT_ID == '' || env.AZURE_CLIENT_ID == '' || env.AZURE_CLIENT_SECRET == '' || env.SELLER_ID == ''
         run: Write-Host "::notice::Microsoft Store publishing skipped because Store credentials are not configured."
@@ -514,7 +509,7 @@ jobs:
           path: .
           format: cyclonedx-json
           output-file: sbom.cdx.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sbom
           path: sbom.cdx.json
