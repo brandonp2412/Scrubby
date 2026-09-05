@@ -733,6 +733,11 @@ class AppState extends ChangeNotifier {
     await _secureStorage.write(key: _roomLabelsKey, value: encoded);
   }
 
+  Future<void> refreshRooms() async {
+    await _loadVacuumSegments();
+    notifyListeners();
+  }
+
   Future<void> _loadVacuumSegments() async {
     roomCapabilityError = null;
     _vacuumSegments.clear();

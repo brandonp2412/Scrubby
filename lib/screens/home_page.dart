@@ -834,25 +834,24 @@ class _NotificationHistory extends StatelessWidget {
           style: Theme.of(context).textTheme.titleLarge,
         ),
         const SizedBox(height: 12),
-        SurfaceCard(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-          child: Column(
-            children: [
-              if (records.isEmpty)
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.notifications_none_rounded),
-                  title: Text('No notifications yet'),
-                  subtitle: Text('Robot alerts will appear here.'),
-                )
-              else
+        if (records.isEmpty)
+          const EmptyStatePanel(
+            icon: Icons.notifications_none_rounded,
+            title: 'No notifications yet',
+            message: 'Robot alerts will appear here.',
+          )
+        else
+          SurfaceCard(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+            child: Column(
+              children: [
                 for (var index = 0; index < records.length; index++) ...[
                   _NotificationRow(record: records[index]),
                   if (index != records.length - 1) const Divider(height: 1),
                 ],
-            ],
+              ],
+            ),
           ),
-        ),
       ],
     );
   }

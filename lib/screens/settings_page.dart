@@ -103,7 +103,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 onClear: _clearSearch,
               ),
               const SizedBox(height: 24),
-              _NoSearchResults(query: _searchController.text.trim()),
+              _NoSearchResults(
+                query: _searchController.text.trim(),
+                onClear: _clearSearch,
+              ),
             ]
           else ...[
             _SettingsSearchField(
@@ -307,21 +310,19 @@ class _SettingsSearchField extends StatelessWidget {
 }
 
 class _NoSearchResults extends StatelessWidget {
-  const _NoSearchResults({required this.query});
+  const _NoSearchResults({required this.query, required this.onClear});
 
   final String query;
+  final VoidCallback onClear;
 
   @override
-  Widget build(BuildContext context) => SurfaceCard(
-    child: Center(
-      child: Column(
-        children: [
-          const Icon(Icons.search_off_rounded, size: 38, color: fern),
-          const SizedBox(height: 12),
-          Text('No settings match “$query”.', textAlign: TextAlign.center),
-        ],
-      ),
-    ),
+  Widget build(BuildContext context) => EmptyStatePanel(
+    icon: Icons.search_off_rounded,
+    title: 'No settings found',
+    message: 'Nothing matches “$query”.',
+    actionLabel: 'Clear search',
+    actionIcon: Icons.close_rounded,
+    onAction: onClear,
   );
 }
 
@@ -544,20 +545,13 @@ class _EmptySettings extends StatelessWidget {
   final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) => SurfaceCard(
-    child: Column(
-      children: [
-        const Icon(Icons.tune_rounded, size: 38, color: fern),
-        const SizedBox(height: 12),
-        Text(message, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        TextButton.icon(
-          onPressed: onRetry,
-          icon: const Icon(Icons.refresh_rounded),
-          label: const Text('Try again'),
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => EmptyStatePanel(
+    icon: Icons.tune_rounded,
+    title: 'No vacuum settings available',
+    message: message,
+    actionLabel: 'Try again',
+    actionIcon: Icons.refresh_rounded,
+    onAction: onRetry,
   );
 }
 

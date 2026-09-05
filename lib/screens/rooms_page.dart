@@ -73,7 +73,10 @@ class _RoomsPageState extends State<RoomsPage> {
           ),
           const SizedBox(height: 24),
           if (rooms.isEmpty)
-            _NoRoomsCard(error: widget.state.roomCapabilityError)
+            _NoRoomsCard(
+              error: widget.state.roomCapabilityError,
+              onRetry: widget.state.refreshRooms,
+            )
           else
             LayoutBuilder(
               builder: (context, constraints) {
@@ -309,28 +312,21 @@ class _RoomCard extends StatelessWidget {
 }
 
 class _NoRoomsCard extends StatelessWidget {
-  const _NoRoomsCard({this.error});
+  const _NoRoomsCard({this.error, required this.onRetry});
 
   final String? error;
+  final Future<void> Function() onRetry;
 
   @override
-  Widget build(BuildContext context) => SurfaceCard(
-    child: Row(
-      children: [
-        const CircleAvatar(
-          backgroundColor: mint,
-          child: Icon(Icons.label_outline_rounded, color: fern),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Text(
-            error ??
-                'Home Assistant did not report any cleanable rooms for this vacuum.',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-        ),
-      ],
-    ),
+  Widget build(BuildContext context) => EmptyStatePanel(
+    icon: Icons.meeting_room_outlined,
+    title: 'No cleanable rooms found',
+    message:
+        error ??
+        'Home Assistant did not report any cleanable rooms for this vacuum.',
+    actionLabel: 'Try again',
+    actionIcon: Icons.refresh_rounded,
+    onAction: onRetry,
   );
 }
 

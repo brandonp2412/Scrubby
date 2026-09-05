@@ -40,7 +40,7 @@ class SchedulesPage extends StatelessWidget {
               child: Center(child: CircularProgressIndicator()),
             )
           else if (state.schedules.isEmpty)
-            const _EmptySchedules()
+            _EmptySchedules(onCreate: () => _add(context))
           else
             ReorderableListView.builder(
               shrinkWrap: true,
@@ -154,30 +154,19 @@ class _ScheduleError extends StatelessWidget {
 }
 
 class _EmptySchedules extends StatelessWidget {
-  const _EmptySchedules();
+  const _EmptySchedules({required this.onCreate});
+
+  final VoidCallback onCreate;
 
   @override
-  Widget build(BuildContext context) {
-    return const SurfaceCard(
-      child: Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.event_available_rounded, size: 38, color: fern),
-              SizedBox(height: 12),
-              Text(
-                'No cleaning schedules yet',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-              ),
-              SizedBox(height: 5),
-              Text('Create one to let Home Assistant start your vacuum.'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => EmptyStatePanel(
+    icon: Icons.event_available_rounded,
+    title: 'No cleaning schedules yet',
+    message: 'Create one to let Home Assistant start your vacuum.',
+    actionLabel: 'New schedule',
+    actionIcon: Icons.add_rounded,
+    onAction: onCreate,
+  );
 }
 
 class _ScheduleCard extends StatelessWidget {

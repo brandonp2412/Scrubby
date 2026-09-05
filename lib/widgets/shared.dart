@@ -75,6 +75,79 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
+class EmptyStatePanel extends StatelessWidget {
+  const EmptyStatePanel({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.message,
+    this.actionLabel,
+    this.actionIcon = Icons.arrow_forward_rounded,
+    this.onAction,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? message;
+  final String? actionLabel;
+  final IconData actionIcon;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 2),
+          Icon(icon, size: 58, color: fern),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+          ),
+          if (message != null) ...[
+            const SizedBox(height: 7),
+            Text(
+              message!,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+          if (onAction != null && actionLabel != null) ...[
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: onAction,
+              icon: Icon(actionIcon),
+              label: Text(actionLabel!),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return SurfaceCard(
+      child: Center(
+        child: onAction == null
+            ? content
+            : Semantics(
+                button: true,
+                label: actionLabel ?? title,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: onAction,
+                  child: content,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
 class SurfaceCard extends StatelessWidget {
   const SurfaceCard({
     super.key,
