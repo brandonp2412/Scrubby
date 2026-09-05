@@ -85,9 +85,12 @@ class _DashboardShellState extends State<DashboardShell>
     widget.state.refreshVacuumSettings();
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) => Scaffold(
-          appBar: AppBar(title: Text(widget.state.vacuum.name)),
-          body: SettingsPage(state: widget.state),
+        builder: (context) => ListenableBuilder(
+          listenable: widget.state,
+          builder: (context, _) => Scaffold(
+            appBar: AppBar(title: Text(widget.state.vacuum.name)),
+            body: SettingsPage(state: widget.state),
+          ),
         ),
       ),
     );

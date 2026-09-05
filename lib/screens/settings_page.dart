@@ -239,18 +239,19 @@ class _SettingsPageState extends State<SettingsPage> {
   };
 
   Future<void> _editVacuumName(BuildContext context) async {
-    final controller = TextEditingController(text: state.vacuum.name);
+    var editedName = state.vacuum.name;
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit vacuum name'),
-        content: TextField(
-          controller: controller,
+        content: TextFormField(
+          initialValue: editedName,
           autofocus: true,
           maxLength: 40,
           textCapitalization: TextCapitalization.words,
           decoration: const InputDecoration(labelText: 'Vacuum name'),
-          onSubmitted: (value) {
+          onChanged: (value) => editedName = value,
+          onFieldSubmitted: (value) {
             if (value.trim().isNotEmpty) Navigator.pop(context, value);
           },
         ),
@@ -261,8 +262,8 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           FilledButton(
             onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                Navigator.pop(context, controller.text);
+              if (editedName.trim().isNotEmpty) {
+                Navigator.pop(context, editedName);
               }
             },
             child: const Text('Save'),
@@ -270,7 +271,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ],
       ),
     );
-    controller.dispose();
     if (name != null) await state.renameVacuum(name);
   }
 }

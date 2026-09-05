@@ -593,7 +593,14 @@ class _HomeMapCardState extends State<_HomeMapCard> {
     );
   }
 
+  bool get _canAddLabel => widget.state.vacuumSegments.any(
+    (segment) => !widget.state.mapRoomLabels.any(
+      (label) => label.segmentId == segment.id,
+    ),
+  );
+
   Future<void> _addLabel() async {
+    if (!_canAddLabel) return;
     final result = await showDialog<_RoomLabelResult>(
       context: context,
       builder: (context) => _RoomLabelDialog(
@@ -680,18 +687,19 @@ class _HomeMapCardState extends State<_HomeMapCard> {
                               ),
                             ),
                           ),
-                          Positioned(
-                            right: 12,
-                            top: 12,
-                            child: FloatingActionButton.small(
-                              heroTag: 'home-map-label',
-                              tooltip: 'Name a room',
-                              backgroundColor: Colors.white,
-                              foregroundColor: ink,
-                              onPressed: _addLabel,
-                              child: const Icon(Icons.label_outline_rounded),
+                          if (_canAddLabel)
+                            Positioned(
+                              right: 12,
+                              top: 12,
+                              child: FloatingActionButton.small(
+                                heroTag: 'home-map-label',
+                                tooltip: 'Name a room',
+                                backgroundColor: Colors.white,
+                                foregroundColor: ink,
+                                onPressed: _addLabel,
+                                child: const Icon(Icons.label_outline_rounded),
+                              ),
                             ),
-                          ),
                           Positioned(
                             right: 12,
                             top: 68,
@@ -916,7 +924,7 @@ class _RoomLabelDialogState extends State<_RoomLabelDialog> {
 
   void _submit() {
     final name = _controller.text.trim();
-    if (name.isNotEmpty && (widget.segments.isEmpty || _segmentId != null)) {
+    if (name.isNotEmpty && _segmentId != null) {
       Navigator.pop(
         context,
         _RoomLabelResult(name: name, segmentId: _segmentId),

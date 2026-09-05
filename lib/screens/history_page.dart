@@ -89,7 +89,7 @@ class _CleaningHistoryPageState extends State<CleaningHistoryPage> {
                   );
                 }
                 return Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 4, child: summary),
                     const SizedBox(width: 12),

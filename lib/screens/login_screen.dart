@@ -82,9 +82,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void startDemo() {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    widget.state.startDemo();
   }
 
   void toggleTokenVisibility() => setState(() => obscure = !obscure);
@@ -309,7 +314,7 @@ class _LoginCard extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: TextButton(
-              onPressed: parent.widget.state.startDemo,
+              onPressed: parent.startDemo,
               child: const Text('Explore with demo home'),
             ),
           ),
