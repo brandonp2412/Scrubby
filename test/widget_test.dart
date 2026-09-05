@@ -144,6 +144,284 @@ void main() {
     expect(entityWith({}).battery, isNull);
   });
 
+  test(
+    'does not match unrelated battery or map entities through missing names',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      var mapFetches = 0;
+      final mapClient = MockClient((request) async {
+        mapFetches++;
+        return http.Response.bytes([1], HttpStatus.ok);
+      });
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.add(jsonEncode({'type': 'auth_required'}));
+        socket.listen((rawMessage) {
+          final message =
+              jsonDecode(rawMessage as String) as Map<String, dynamic>;
+          switch (message['type']) {
+            case 'auth':
+              socket.add(jsonEncode({'type': 'auth_ok'}));
+            case 'get_config':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': {'location_name': 'Test Home'},
+                }),
+              );
+            case 'get_states':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': [
+                    {
+                      'entity_id': 'vacuum.unnamed',
+                      'state': 'docked',
+                      'attributes': <String, Object?>{},
+                    },
+                    {
+                      'entity_id': 'sensor.kitchen_battery',
+                      'state': '81',
+                      'attributes': {'device_class': 'battery'},
+                    },
+                    {
+                      'entity_id': 'sensor.hall_battery',
+                      'state': '42',
+                      'attributes': {'device_class': 'battery'},
+                    },
+                    {
+                      'entity_id': 'camera.kitchen_map',
+                      'state': 'streaming',
+                      'attributes': <String, Object?>{},
+                    },
+                    {
+                      'entity_id': 'camera.hall_map',
+                      'state': 'streaming',
+                      'attributes': <String, Object?>{},
+                    },
+                  ],
+                }),
+              );
+            case 'subscribe_events':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': null,
+                }),
+              );
+          }
+        });
+      });
+
+      final client = HomeAssistantClient(
+        'http://${server.address.address}:${server.port}',
+        'test-token',
+        httpClient: mapClient,
+      );
+      addTearDown(client.close);
+      await client.connect();
+
+      final vacuum = (await client.fetchVacuums()).single;
+
+      expect(vacuum.battery, isNull);
+      expect(vacuum.mapImage, isNull);
+      expect(mapFetches, 0);
+    },
+  );
+
+  test(
+    'finishing a fan-speed command updates the vacuum it started on',
+    () async {
+      final client = _DelayedVacuumClient();
+      addTearDown(client.close);
+      final state = AppState()
+        ..setClientForTesting(client)
+        ..vacuums = [
+          const VacuumEntity(
+            entityId: 'vacuum.first',
+            name: 'First',
+            state: 'docked',
+            battery: 80,
+            fanSpeed: 'Balanced',
+          ),
+          VacuumEntity(
+            entityId: 'vacuum.second',
+            name: 'Second',
+            state: 'docked',
+            battery: 70,
+            fanSpeed: 'Quiet',
+          ),
+        ];
+
+      final command = state.setFanSpeed('Turbo');
+      await client.serviceStarted.future;
+      state.selectedVacuum = 1;
+      client.releaseService.complete();
+      await command;
+
+      expect(client.serviceEntityId, 'vacuum.first');
+      expect(state.vacuums[0].fanSpeed, 'Turbo');
+      expect(state.vacuums[1].fanSpeed, 'Quiet');
+    },
+  );
+
+  test('finishing a room clean updates the vacuum it started on', () async {
+    final client = _DelayedVacuumClient();
+    addTearDown(client.close);
+    final state = AppState()
+      ..setClientForTesting(client)
+      ..vacuums = [
+        const VacuumEntity(
+          entityId: 'vacuum.first',
+          name: 'First',
+          state: 'docked',
+          battery: 80,
+        ),
+        const VacuumEntity(
+          entityId: 'vacuum.second',
+          name: 'Second',
+          state: 'docked',
+          battery: 70,
+        ),
+      ];
+
+    final command = state.cleanRooms(const ['1']);
+    await client.roomsStarted.future;
+    state.selectedVacuum = 1;
+    client.releaseRooms.complete();
+    await command;
+
+    expect(client.roomsEntityId, 'vacuum.first');
+    expect(state.vacuums[0].state, 'cleaning');
+    expect(state.vacuums[1].state, 'docked');
+  });
+
+  test(
+    'an older settings refresh cannot clear a newer loading state',
+    () async {
+      final client = _DelayedVacuumClient();
+      addTearDown(client.close);
+      final state = AppState()
+        ..setClientForTesting(client)
+        ..vacuums = [
+          const VacuumEntity(
+            entityId: 'vacuum.first',
+            name: 'First',
+            state: 'docked',
+            battery: 80,
+          ),
+          const VacuumEntity(
+            entityId: 'vacuum.second',
+            name: 'Second',
+            state: 'docked',
+            battery: 70,
+          ),
+        ];
+
+      final first = state.refreshVacuumSettingsFor('vacuum.first');
+      final second = state.refreshVacuumSettingsFor('vacuum.second');
+      client.settingFetches['vacuum.first']!.completeError(Exception('stale'));
+      await first;
+
+      expect(state.settingsLoading, isTrue);
+      expect(state.settingsError, isNull);
+
+      client.settingFetches['vacuum.second']!.complete(const []);
+      await second;
+
+      expect(state.settingsLoading, isFalse);
+      expect(state.settingsError, isNull);
+    },
+  );
+
+  test('finishing a setting write updates the vacuum it started on', () async {
+    const setting = VacuumSetting(
+      entityId: 'select.first_cleaning_route',
+      name: 'Cleaning route',
+      kind: VacuumSettingKind.select,
+      value: 'Standard',
+      options: ['Standard', 'Deep'],
+    );
+    final client = _DelayedVacuumClient();
+    addTearDown(client.close);
+    final state = AppState()
+      ..setClientForTesting(client)
+      ..vacuums = [
+        const VacuumEntity(
+          entityId: 'vacuum.first',
+          name: 'First',
+          state: 'docked',
+          battery: 80,
+        ),
+        const VacuumEntity(
+          entityId: 'vacuum.second',
+          name: 'Second',
+          state: 'docked',
+          battery: 70,
+        ),
+      ];
+
+    final load = state.refreshVacuumSettingsFor('vacuum.first');
+    client.settingFetches['vacuum.first']!.complete([setting]);
+    await load;
+
+    final write = state.setVacuumSetting(setting, 'Deep');
+    await client.settingWriteStarted.future;
+    state.selectedVacuum = 1;
+    client.releaseSettingWrite.complete();
+    await write;
+    state.selectedVacuum = 0;
+
+    expect(state.vacuumSettings.single.value, 'Deep');
+  });
+
+  test(
+    'a failed schedule toggle reverts the schedule that was toggled',
+    () async {
+      final client = _DelayedVacuumClient();
+      addTearDown(client.close);
+      final state = AppState()..setClientForTesting(client);
+      state.schedules.addAll(const [
+        CleaningSchedule(
+          id: 'scrubby_first',
+          entityId: 'automation.scrubby_first',
+          title: 'First',
+          weekdays: [DateTime.monday],
+          time: '09:00',
+          vacuumEntityId: 'vacuum.first',
+        ),
+        CleaningSchedule(
+          id: 'scrubby_second',
+          entityId: 'automation.scrubby_second',
+          title: 'Second',
+          weekdays: [DateTime.tuesday],
+          time: '10:00',
+          vacuumEntityId: 'vacuum.first',
+        ),
+      ]);
+
+      final toggle = state.toggleSchedule(0, false);
+      await client.scheduleToggleStarted.future;
+      final moved = state.schedules.removeAt(0);
+      state.schedules.add(moved);
+      client.releaseScheduleToggle.complete();
+      await toggle;
+
+      expect(state.schedules.map((schedule) => schedule.id), [
+        'scrubby_second',
+        'scrubby_first',
+      ]);
+      expect(state.schedules.last.enabled, isTrue);
+    },
+  );
+
   test('can end a paused cleaning run', () async {
     final state = AppState()..startDemo();
 
@@ -1294,6 +1572,68 @@ void main() {
     expect(find.text('Water volume'), findsOneWidget);
     expect(find.text('Carpet boost'), findsOneWidget);
   });
+}
+
+class _DelayedVacuumClient extends HomeAssistantClient {
+  _DelayedVacuumClient()
+    : super(
+        'http://homeassistant.local:8123',
+        'test-token',
+        httpClient: MockClient((_) async => http.Response('[]', HttpStatus.ok)),
+      );
+
+  final serviceStarted = Completer<void>();
+  final releaseService = Completer<void>();
+  final roomsStarted = Completer<void>();
+  final releaseRooms = Completer<void>();
+  final settingWriteStarted = Completer<void>();
+  final releaseSettingWrite = Completer<void>();
+  final scheduleToggleStarted = Completer<void>();
+  final releaseScheduleToggle = Completer<void>();
+  final Map<String, Completer<List<VacuumSetting>>> settingFetches = {};
+  String? serviceEntityId;
+  String? roomsEntityId;
+
+  @override
+  Future<void> callVacuumService(
+    String service,
+    String entityId, {
+    Map<String, Object?> data = const {},
+  }) async {
+    serviceEntityId = entityId;
+    if (!serviceStarted.isCompleted) serviceStarted.complete();
+    await releaseService.future;
+  }
+
+  @override
+  Future<void> cleanVacuumSegments(
+    String entityId,
+    List<String> segmentIds,
+  ) async {
+    roomsEntityId = entityId;
+    if (!roomsStarted.isCompleted) roomsStarted.complete();
+    await releaseRooms.future;
+  }
+
+  @override
+  Future<List<VacuumSetting>> fetchVacuumSettings(String vacuumEntityId) {
+    return settingFetches
+        .putIfAbsent(vacuumEntityId, Completer<List<VacuumSetting>>.new)
+        .future;
+  }
+
+  @override
+  Future<void> setVacuumSetting(VacuumSetting setting, Object? value) async {
+    if (!settingWriteStarted.isCompleted) settingWriteStarted.complete();
+    await releaseSettingWrite.future;
+  }
+
+  @override
+  Future<void> setScrubbyScheduleEnabled(String entityId, bool enabled) async {
+    if (!scheduleToggleStarted.isCompleted) scheduleToggleStarted.complete();
+    await releaseScheduleToggle.future;
+    throw Exception('toggle failed');
+  }
 }
 
 class _SettingsTestState extends AppState {

@@ -166,6 +166,10 @@ class AppState extends ChangeNotifier {
   final FlutterSecureStorage _secureStorage;
   final VacuumNotificationPresenter _notificationPresenter;
   HomeAssistantClient? _client;
+
+  @visibleForTesting
+  void setClientForTesting(HomeAssistantClient client) => _client = client;
+
   StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
   StreamSubscription<DreameNotification>? _notificationSubscription;
   StreamSubscription<HomeAssistantConnectionStatus>? _connectionSubscription;
@@ -190,6 +194,7 @@ class AppState extends ChangeNotifier {
   String? roomCapabilityError;
   bool settingsLoading = false;
   String? settingsError;
+  int _settingsRefreshGeneration = 0;
   final Set<String> busySettingIds = {};
   final List<VacuumNotificationRecord> notificationHistory = [];
 
@@ -557,27 +562,31 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshVacuumSettingsFor(String entityId) async {
     if (isDemo || _client == null) return;
+    final generation = ++_settingsRefreshGeneration;
     settingsLoading = true;
     settingsError = null;
     notifyListeners();
     try {
       _vacuumSettings[entityId] = await _client!.fetchVacuumSettings(entityId);
     } catch (error) {
-      settingsError = _message(error);
+      if (generation == _settingsRefreshGeneration) {
+        settingsError = _message(error);
+      }
     } finally {
-      settingsLoading = false;
+      if (generation == _settingsRefreshGeneration) settingsLoading = false;
       notifyListeners();
     }
   }
 
   Future<void> setVacuumSetting(VacuumSetting setting, Object? value) async {
     if (busySettingIds.contains(setting.entityId)) return;
+    final targetVacuumId = vacuum.entityId;
     busySettingIds.add(setting.entityId);
     notifyListeners();
     try {
       if (!isDemo) await _client!.setVacuumSetting(setting, value);
       if (setting.kind != VacuumSettingKind.action) {
-        final settings = _vacuumSettings[vacuum.entityId];
+        final settings = _vacuumSettings[targetVacuumId];
         final index =
             settings?.indexWhere((item) => item.entityId == setting.entityId) ??
             -1;
@@ -609,17 +618,21 @@ class AppState extends ChangeNotifier {
 
   Future<void> setFanSpeed(String speed) async {
     if (isBusy || speed == vacuum.fanSpeed) return;
+    final targetVacuumId = vacuum.entityId;
     isBusy = true;
     notifyListeners();
     try {
       if (!isDemo) {
         await _client?.callVacuumService(
           'set_fan_speed',
-          vacuum.entityId,
+          targetVacuumId,
           data: {'fan_speed': speed},
         );
       }
-      vacuums[selectedVacuum] = vacuum.copyWith(fanSpeed: speed);
+      _updateVacuum(
+        targetVacuumId,
+        (current) => current.copyWith(fanSpeed: speed),
+      );
     } finally {
       isBusy = false;
       notifyListeners();
@@ -769,13 +782,17 @@ class AppState extends ChangeNotifier {
     if (segmentIds.isEmpty) {
       throw const FormatException('Choose at least one cleanable room.');
     }
+    final targetVacuumId = vacuum.entityId;
     isBusy = true;
     notifyListeners();
     try {
       if (!isDemo) {
-        await _client!.cleanVacuumSegments(vacuum.entityId, segmentIds);
+        await _client!.cleanVacuumSegments(targetVacuumId, segmentIds);
       }
-      vacuums[selectedVacuum] = vacuum.copyWith(state: 'cleaning');
+      _updateVacuum(
+        targetVacuumId,
+        (current) => current.copyWith(state: 'cleaning'),
+      );
     } finally {
       isBusy = false;
       notifyListeners();
@@ -784,15 +801,27 @@ class AppState extends ChangeNotifier {
 
   Future<void> _runService(String service, String newState) async {
     if (isBusy) return;
+    final targetVacuumId = vacuum.entityId;
     isBusy = true;
     notifyListeners();
     try {
-      if (!isDemo) await _client?.callVacuumService(service, vacuum.entityId);
-      vacuums[selectedVacuum] = vacuum.copyWith(state: newState);
+      if (!isDemo) await _client?.callVacuumService(service, targetVacuumId);
+      _updateVacuum(
+        targetVacuumId,
+        (current) => current.copyWith(state: newState),
+      );
     } finally {
       isBusy = false;
       notifyListeners();
     }
+  }
+
+  void _updateVacuum(
+    String entityId,
+    VacuumEntity Function(VacuumEntity current) update,
+  ) {
+    final index = vacuums.indexWhere((item) => item.entityId == entityId);
+    if (index >= 0) vacuums[index] = update(vacuums[index]);
   }
 
   String vacuumName(String entityId) {
@@ -903,7 +932,10 @@ class AppState extends ChangeNotifier {
     try {
       await _client!.setScrubbyScheduleEnabled(schedule.entityId, value);
     } catch (error) {
-      schedules[index] = schedule;
+      final currentIndex = schedules.indexWhere(
+        (item) => item.id == schedule.id,
+      );
+      if (currentIndex >= 0) schedules[currentIndex] = schedule;
       scheduleError = _message(error);
     } finally {
       busyScheduleIds.remove(schedule.id);

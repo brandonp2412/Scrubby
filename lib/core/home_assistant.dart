@@ -1100,12 +1100,14 @@ class HomeAssistantClient {
     Map<String, dynamic> candidate,
     Map<String, dynamic> vacuum,
   ) {
-    String normalized(Object? value) => value
-        .toString()
-        .toLowerCase()
-        .replaceAll(RegExp(r'^(vacuum|sensor|camera|image)\.'), '')
-        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
-        .trim();
+    String normalized(Object? value) => value == null
+        ? ''
+        : value
+              .toString()
+              .toLowerCase()
+              .replaceAll(RegExp(r'^(vacuum|sensor|camera|image)\.'), '')
+              .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+              .trim();
     final vacuumAttributes =
         vacuum['attributes'] as Map<String, dynamic>? ?? const {};
     final candidateAttributes =
