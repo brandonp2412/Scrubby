@@ -1286,9 +1286,10 @@ void main() {
       'missing',
     );
     await tester.pump();
-    expect(find.text('No settings match “missing”.'), findsOneWidget);
+    expect(find.text('No settings found'), findsOneWidget);
+    expect(find.text('Nothing matches “missing”.'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Clear search'));
+    await tester.tap(find.text('Clear search').last);
     await tester.pump();
     expect(find.text('Water volume'), findsOneWidget);
     expect(find.text('Carpet boost'), findsOneWidget);
