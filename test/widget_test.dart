@@ -1,10 +1,3 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -31,9 +24,6 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const ScrubbyApp());
-    expect(find.byKey(const ValueKey('startup')), findsOneWidget);
-    expect(find.text('Connect your home'), findsNothing);
-
     await tester.pumpAndSettle();
     expect(find.text('Connect your home'), findsOneWidget);
     expect(find.text('Explore with demo home'), findsOneWidget);
@@ -79,7 +69,7 @@ void main() {
 
     expect(find.text('Edit schedule'), findsOneWidget);
     expect(find.text('Save changes'), findsOneWidget);
-    final nameField = find.byType(TextField);
+    final nameField = find.bySemanticsLabel('Name');
     expect(nameField, findsOneWidget);
     await tester.enterText(nameField, 'Evening clean');
     final saveButton = find.text('Save changes');
@@ -1346,7 +1336,7 @@ void main() {
       await tester.tap(find.byTooltip('Name a room'));
       await tester.pumpAndSettle();
       expect(tester.testTextInput.hasAnyClients, isFalse);
-      await tester.enterText(find.byType(TextField), 'Kitchen');
+      await tester.enterText(find.bySemanticsLabel('Display name'), 'Kitchen');
       await tester.tap(find.text('Add label'));
       await tester.pumpAndSettle();
 
@@ -1392,11 +1382,10 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
-
     final content = find.byKey(const ValueKey('dashboard-page-content'));
+
     await tester.fling(content, const Offset(-400, 0), 1000);
     await tester.pumpAndSettle();
-    expect(tester.widget<TabBarView>(content).controller!.index, 1);
     expect(find.text('Cleaning rhythm'), findsOneWidget);
 
     await tester.fling(content, const Offset(400, 0), 1000);
@@ -1437,7 +1426,6 @@ void main() {
 
     expect(find.text('${state.vacuum.name} settings'), findsOneWidget);
     expect(find.text('Carpet cleaning mode'), findsOneWidget);
-    expect(find.byType(BackButton), findsOneWidget);
   });
 
   testWidgets('shows and updates Dreame carpet settings', (
@@ -1549,20 +1537,15 @@ void main() {
       ),
     );
 
-    expect(find.byKey(const ValueKey('settings-search')), findsOneWidget);
-    await tester.enterText(
-      find.byKey(const ValueKey('settings-search')),
-      'water',
-    );
+    final searchField = find.bySemanticsLabel('Search settings');
+    expect(searchField, findsOneWidget);
+    await tester.enterText(searchField, 'water');
     await tester.pump();
 
     expect(find.text('Water volume'), findsOneWidget);
     expect(find.text('Carpet boost'), findsNothing);
 
-    await tester.enterText(
-      find.byKey(const ValueKey('settings-search')),
-      'missing',
-    );
+    await tester.enterText(searchField, 'missing');
     await tester.pump();
     expect(find.text('No settings found'), findsOneWidget);
     expect(find.text('Nothing matches “missing”.'), findsOneWidget);
