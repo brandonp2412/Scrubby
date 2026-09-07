@@ -427,6 +427,11 @@ jobs:
         with:
           name: android-builds
           path: android-release
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
       - name: Install Fastlane
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
         run: bundle install --jobs 4 --retry 3
