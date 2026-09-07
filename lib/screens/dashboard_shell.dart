@@ -260,6 +260,7 @@ class _TopBar extends StatelessWidget {
           ),
           if (state.vacuums.length > 1)
             PopupMenuButton<int>(
+              tooltip: 'Select vacuum',
               initialValue: state.selectedVacuum,
               onSelected: state.selectVacuum,
               itemBuilder: (_) => [

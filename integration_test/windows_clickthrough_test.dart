@@ -43,6 +43,10 @@ Finder _formDropdown(String label) => find.byWidgetPredicate(
       widget is DropdownButtonFormField && widget.decoration.labelText == label,
 );
 
+Finder _textFieldWithHint(String hint) => find.byWidgetPredicate(
+  (widget) => widget is TextField && widget.decoration?.hintText == hint,
+);
+
 Future<AppState> _pumpLoginFlow(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1280, 900));
   final state = AppState(secureStorage: const _FakeSecureStorage())
@@ -123,9 +127,9 @@ void main() {
     expect(fields, findsNWidgets(2));
     final token = fields.at(1);
     expect(tester.widget<TextField>(token).obscureText, isTrue);
-    await _tap(tester, find.byIcon(Icons.visibility_outlined));
+    await _tap(tester, find.byTooltip('Show token'));
     expect(tester.widget<TextField>(token).obscureText, isFalse);
-    await _tap(tester, find.byIcon(Icons.visibility_off_outlined));
+    await _tap(tester, find.byTooltip('Hide token'));
     expect(tester.widget<TextField>(token).obscureText, isTrue);
 
     await tester.enterText(fields.first, 'http://homeassistant.local:8123');
@@ -184,10 +188,7 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
-    await _tap(
-      tester,
-      find.byKey(const ValueKey('notification-history-preview')),
-    );
+    await _tap(tester, find.text('Notification history'));
     expect(find.text('Notification history'), findsWidgets);
     await tester.pageBack();
     await tester.pumpAndSettle();
@@ -213,19 +214,20 @@ void main() {
 
     await _tap(tester, find.text('Orbit').first);
     expect(find.text('Orbit settings'), findsOneWidget);
-    await _tap(tester, find.byKey(const ValueKey('edit-vacuum-name')));
+    await _tap(tester, find.text('Edit vacuum name'));
     expect(find.text('Edit vacuum name'), findsWidgets);
     await _tap(tester, find.text('Cancel'));
-    await _tap(tester, find.byKey(const ValueKey('edit-vacuum-name')));
+    await _tap(tester, find.text('Edit vacuum name'));
     await tester.enterText(find.byType(TextFormField).last, 'Orbit Windows');
     await _tap(tester, find.text('Save'));
     expect(state.vacuum.name, 'Orbit Windows');
     expect(find.text('Orbit Windows settings'), findsOneWidget);
 
-    final search = find.byKey(const ValueKey('settings-search'));
+    final search = _textFieldWithHint('Search settings');
     await tester.enterText(search, 'nothing matches this');
     await tester.pumpAndSettle();
-    expect(find.textContaining('No settings match'), findsOneWidget);
+    expect(find.text('No settings found'), findsOneWidget);
+    expect(find.textContaining('Nothing matches'), findsOneWidget);
     await _tap(tester, find.byTooltip('Clear search'));
 
     final firstSelect = find.byType(DropdownButton<String>).first;
@@ -288,12 +290,12 @@ void main() {
     await _tap(tester, find.text('End clean'));
     expect(find.text('START'), findsOneWidget);
 
-    await _tap(tester, find.byKey(const ValueKey('dashboard-tab-1')));
+    await _tap(tester, find.text('Schedules'));
     expect(find.text('Morning clean'), findsOneWidget);
 
     await _tap(tester, find.text('Morning clean'));
     expect(find.text('Edit schedule'), findsOneWidget);
-    await _tap(tester, find.byIcon(Icons.close));
+    await _tap(tester, find.byTooltip('Close'));
 
     await _tap(tester, find.text('New schedule'));
     expect(find.text('New schedule'), findsWidgets);
@@ -311,16 +313,16 @@ void main() {
     await _tap(tester, find.text('Delete'));
     expect(find.text('Windows E2E'), findsNothing);
 
-    await _tap(tester, find.byKey(const ValueKey('dashboard-tab-2')));
+    await _tap(tester, find.text('Rooms'));
     expect(find.text('Kitchen'), findsOneWidget);
     await _tap(tester, find.text('Kitchen'));
     await _tap(tester, find.text('Living room'));
     expect(find.text('Clean 2 rooms'), findsOneWidget);
 
-    await _tap(tester, find.byKey(const ValueKey('manual-cleaning-mode')));
+    await _tap(tester, _formDropdown('Cleaning mode'));
     await _tap(tester, find.text('Mop').last);
     expect(_formDropdown('Suction power'), findsNothing);
-    await _tap(tester, find.byKey(const ValueKey('manual-cleaning-mode')));
+    await _tap(tester, _formDropdown('Cleaning mode'));
     await _tap(tester, find.text('Vacuum & mop').last);
     expect(_formDropdown('Suction power'), findsOneWidget);
     await _tap(tester, _formDropdown('Suction power'));
@@ -338,7 +340,7 @@ void main() {
     final state = await _pumpDashboard(tester);
     addTearDown(state.dispose);
 
-    await _tap(tester, find.byKey(const ValueKey('dashboard-tab-1')));
+    await _tap(tester, find.text('Schedules'));
     await _tap(tester, find.text('New schedule'));
     await tester.enterText(find.byType(TextField).first, 'Windows exhaustive');
 
@@ -431,7 +433,7 @@ void main() {
     final state = await _pumpDashboard(tester);
     addTearDown(state.dispose);
 
-    await _tap(tester, find.byIcon(Icons.expand_more_rounded));
+    await _tap(tester, find.byTooltip('Select vacuum'));
     await _tap(tester, find.text('Mini'));
     expect(state.vacuum.name, 'Mini');
     expect(find.text('No map entity found'), findsOneWidget);
@@ -450,14 +452,14 @@ void main() {
     await tester.pageBack();
     await _settle(tester);
 
-    await _tap(tester, find.byKey(const ValueKey('dashboard-tab-2')));
+    await _tap(tester, find.text('Rooms'));
     expect(
       find.textContaining('did not report any cleanable rooms'),
       findsOneWidget,
     );
-    await _tap(tester, find.byKey(const ValueKey('dashboard-tab-0')));
+    await _tap(tester, find.text('Overview'));
 
-    await _tap(tester, find.byIcon(Icons.expand_more_rounded));
+    await _tap(tester, find.byTooltip('Select vacuum'));
     await _tap(tester, find.text('Orbit').last);
     expect(state.vacuum.name, 'Orbit');
 

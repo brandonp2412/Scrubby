@@ -272,6 +272,7 @@ class _LoginCard extends StatelessWidget {
               prefixIcon: const Icon(Icons.key_rounded),
               suffixIcon: IconButton(
                 onPressed: parent.toggleTokenVisibility,
+                tooltip: parent.obscure ? 'Show token' : 'Hide token',
                 icon: Icon(
                   parent.obscure
                       ? Icons.visibility_outlined
