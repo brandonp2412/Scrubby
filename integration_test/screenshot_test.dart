@@ -97,7 +97,7 @@ Future<void> _pumpDashboard(
   );
   await tester.pumpAndSettle();
   if (tab != 0) {
-    await tester.tap(find.text(['Home', 'Schedule', 'Rooms'][tab]));
+    await tester.tap(find.byKey(ValueKey('dashboard-tab-$tab')));
     await tester.pumpAndSettle();
   }
 }
@@ -114,9 +114,9 @@ void main() {
     testWidgets('HomePage', (tester) async {
       final state = _buildState();
       await _pumpDashboard(tester, state);
-      await tester.tap(find.text('Schedule'));
+      await tester.tap(find.byKey(const ValueKey('dashboard-tab-1')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Home'));
+      await tester.tap(find.byKey(const ValueKey('dashboard-tab-0')));
       await tester.pumpAndSettle();
       await _takeScreenshot(
         binding: binding,
@@ -148,7 +148,7 @@ void main() {
     testWidgets('SettingsPage', (tester) async {
       final state = _buildState();
       await _pumpDashboard(tester, state);
-      await tester.tap(find.bySemanticsLabel('Open Orbit settings'));
+      await tester.tap(find.byKey(const ValueKey('open-vacuum-settings')));
       await tester.pumpAndSettle();
       await _takeScreenshot(
         binding: binding,
