@@ -483,12 +483,13 @@ jobs:
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         run: msstore reconfigure --tenantId $env:AZURE_TENANT_ID --clientId $env:AZURE_CLIENT_ID --clientSecret $env:AZURE_CLIENT_SECRET --sellerId $env:SELLER_ID
       - name: Prepare Microsoft Store for submission
+        id: prepare_store
         timeout-minutes: 45
         if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
         shell: pwsh
         run: ./scripts/finalize-msstore-rollout.ps1 -ProductId "9N17TVBTJWXD"
       - name: Publish to Microsoft Store
-        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != ''
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != '' && steps.prepare_store.outputs.ready == 'true'
         shell: pwsh
         run: |
           $packages = @(Get-ChildItem store-package -File | Where-Object { $_.Extension -in '.msix', '.msixupload' })
@@ -504,6 +505,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Microsoft Store submission status verification failed with exit code $LASTEXITCODE."
           }
+      - name: Skip Microsoft Store publish while previous submission is processing
+        if: env.AZURE_TENANT_ID != '' && env.AZURE_CLIENT_ID != '' && env.AZURE_CLIENT_SECRET != '' && env.SELLER_ID != '' && steps.prepare_store.outputs.ready != 'true'
+        run: Write-Host "::notice::Microsoft Store publishing skipped because the previous submission is still being processed."
       - name: Skip Microsoft Store publish
         if: env.AZURE_TENANT_ID == '' || env.AZURE_CLIENT_ID == '' || env.AZURE_CLIENT_SECRET == '' || env.SELLER_ID == ''
         run: Write-Host "::notice::Microsoft Store publishing skipped because Store credentials are not configured."

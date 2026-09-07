@@ -13,6 +13,13 @@ function Set-FinalizedOutput([bool]$finalized) {
   }
 }
 
+function Set-ReadyOutput([bool]$ready) {
+  if ($env:GITHUB_OUTPUT) {
+    $value = $ready.ToString().ToLowerInvariant()
+    Add-Content -Path $env:GITHUB_OUTPUT -Value "ready=$value"
+  }
+}
+
 function Invoke-StoreCommand([string[]]$Arguments) {
   $output = @(& msstore @Arguments 2>&1)
   $exitCode = $LASTEXITCODE
@@ -38,6 +45,8 @@ function ConvertFrom-StoreJson($Output, [string]$Description) {
 }
 
 Set-FinalizedOutput $false
+Set-ReadyOutput $false
+$pendingSubmissionFailed = $false
 
 $pollResult = Invoke-StoreCommand @(
   "submission", "poll", $ProductId, "--verbose"
@@ -58,7 +67,8 @@ if ($pollResult.ExitCode -ne 0) {
   }
 
   if ($knownFailure) {
-    Write-Warning "Existing Microsoft Store submission is failed; the next publish can replace it."
+    $pendingSubmissionFailed = $true
+    Write-Warning "Existing Microsoft Store submission is failed; attempting to remove it before publishing."
   } else {
     Write-Error "Could not wait for the existing Microsoft Store submission to finish."
     exit $pollResult.ExitCode
@@ -81,9 +91,46 @@ try {
   exit 1
 }
 
+$pendingSubmissionId = $application.PendingApplicationSubmission.Id
+if ($pendingSubmissionId) {
+  if (-not $pendingSubmissionFailed) {
+    Write-Host "::notice::Microsoft Store submission $pendingSubmissionId is still being processed. Skipping this publish instead of creating a conflicting submission."
+    exit 0
+  }
+
+  $deleteResult = Invoke-StoreCommand @(
+    "submission", "delete", $ProductId, "--no-confirm", "--verbose"
+  )
+  if ($deleteResult.ExitCode -ne 0) {
+    Write-Warning "The failed Microsoft Store submission could not be deleted yet. Skipping this publish."
+    exit 0
+  }
+
+  $appResult = Invoke-StoreCommand @(
+    "apps", "get", $ProductId, "--verbose"
+  )
+  if ($appResult.ExitCode -ne 0) {
+    Write-Error "Could not verify the Microsoft Store application after deleting the failed submission."
+    exit $appResult.ExitCode
+  }
+
+  try {
+    $application = ConvertFrom-StoreJson $appResult.Output "application"
+  } catch {
+    Write-Error $_.Exception.Message
+    exit 1
+  }
+
+  if ($application.PendingApplicationSubmission.Id) {
+    Write-Warning "Microsoft Store still reports a pending submission after deletion. Skipping this publish."
+    exit 0
+  }
+}
+
 $submissionId = $application.LastPublishedApplicationSubmission.Id
 if (-not $submissionId) {
   Set-FinalizedOutput $true
+  Set-ReadyOutput $true
   Write-Host "No published Microsoft Store submission exists yet; there is no rollout to finalize."
   exit 0
 }
@@ -110,6 +157,7 @@ if (
   $rollout.PackageRolloutStatus -eq "PackageRolloutComplete"
 ) {
   Set-FinalizedOutput $true
+  Set-ReadyOutput $true
   Write-Host "No active Microsoft Store package rollout remains."
   exit 0
 }
@@ -125,5 +173,6 @@ if ($finalizeResult.ExitCode -ne 0) {
 }
 
 Set-FinalizedOutput $true
+Set-ReadyOutput $true
 Write-Host "Finalized the active Microsoft Store package rollout."
 exit 0
