@@ -84,6 +84,20 @@ Future<void> _takeScreenshot({
   await binding.takeScreenshot(screenshotName);
 }
 
+Future<void> _tapDashboardTab(WidgetTester tester, int tab) async {
+  final labels = switch (tab) {
+    0 => const ['Home', 'Overview'],
+    1 => const ['Schedule', 'Schedules'],
+    2 => const ['Rooms'],
+    _ => throw ArgumentError.value(tab, 'tab'),
+  };
+  final label = labels.firstWhere(
+    (candidate) => find.text(candidate).evaluate().isNotEmpty,
+  );
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpDashboard(
   WidgetTester tester,
   AppState state, {
@@ -96,10 +110,7 @@ Future<void> _pumpDashboard(
     ),
   );
   await tester.pumpAndSettle();
-  if (tab != 0) {
-    await tester.tap(find.byKey(ValueKey('dashboard-tab-$tab')));
-    await tester.pumpAndSettle();
-  }
+  if (tab != 0) await _tapDashboardTab(tester, tab);
 }
 
 const _only = String.fromEnvironment('SCREENSHOT_ONLY');
@@ -114,10 +125,8 @@ void main() {
     testWidgets('HomePage', (tester) async {
       final state = _buildState();
       await _pumpDashboard(tester, state);
-      await tester.tap(find.byKey(const ValueKey('dashboard-tab-1')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('dashboard-tab-0')));
-      await tester.pumpAndSettle();
+      await _tapDashboardTab(tester, 1);
+      await _tapDashboardTab(tester, 0);
       await _takeScreenshot(
         binding: binding,
         tester: tester,
@@ -148,7 +157,7 @@ void main() {
     testWidgets('SettingsPage', (tester) async {
       final state = _buildState();
       await _pumpDashboard(tester, state);
-      await tester.tap(find.byKey(const ValueKey('open-vacuum-settings')));
+      await tester.tap(find.text(state.vacuum.name));
       await tester.pumpAndSettle();
       await _takeScreenshot(
         binding: binding,
