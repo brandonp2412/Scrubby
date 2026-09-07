@@ -343,15 +343,12 @@ class AppState extends ChangeNotifier {
     );
     if (isDuplicate) return;
     talker.info('Received ${notification.category.name} vacuum notification');
-    notificationHistory.insert(
-      0,
-      VacuumNotificationRecord(
-        category: notification.category,
-        entityId: notification.entityId,
-        title: notification.title,
-        body: notification.body,
-        createdAt: now,
-      ),
+    final record = VacuumNotificationRecord(
+      category: notification.category,
+      entityId: notification.entityId,
+      title: notification.title,
+      body: notification.body,
+      createdAt: now,
     );
     final persistentIdentity = record.persistentIdentity;
     if (persistentIdentity != null) {
@@ -640,7 +637,9 @@ class AppState extends ChangeNotifier {
       }
     } catch (error, stackTrace) {
       talker.handle(error, stackTrace, 'Could not load vacuum settings');
-      settingsError = _message(error);
+      if (generation == _settingsRefreshGeneration) {
+        settingsError = _message(error);
+      }
     } finally {
       if (generation == _settingsRefreshGeneration) settingsLoading = false;
       notifyListeners();
@@ -884,8 +883,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       talker.info('Running vacuum service: $service');
-      if (!isDemo) await _client?.callVacuumService(service, vacuum.entityId);
-      vacuums[selectedVacuum] = vacuum.copyWith(state: newState);
+      if (!isDemo) await _client?.callVacuumService(service, targetVacuumId);
+      _updateVacuum(
+        targetVacuumId,
+        (current) => current.copyWith(state: newState),
+      );
     } finally {
       isBusy = false;
       notifyListeners();
@@ -1018,7 +1020,10 @@ class AppState extends ChangeNotifier {
         stackTrace,
         'Could not update cleaning schedule state',
       );
-      schedules[index] = schedule;
+      final currentIndex = schedules.indexWhere(
+        (item) => item.id == schedule.id,
+      );
+      if (currentIndex >= 0) schedules[currentIndex] = schedule;
       scheduleError = _message(error);
     } finally {
       busyScheduleIds.remove(schedule.id);
