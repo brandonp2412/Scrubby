@@ -420,6 +420,7 @@ jobs:
     env:
       GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON || secrets.GOOGLE_PLAY_JSON_KEY }}
       ANDROID_SIGNING_READY: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && (secrets.ANDROID_STORE_PASSWORD != '' || secrets.storePassword != '') && (secrets.ANDROID_KEY_ALIAS != '' || secrets.keyAlias != '') && (secrets.ANDROID_KEY_PASSWORD != '' || secrets.keyPassword != '') }}
+      PLAY_UPLOAD_KEY_VALID_AFTER: '2026-09-09T09:31:00Z'
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -429,19 +430,32 @@ jobs:
         with:
           name: android-builds
           path: android-release
+      - name: Check Google Play upload key activation
+        id: play_upload_key
+        shell: bash
+        run: |
+          if [ "$(date -u +%s)" -ge "$(date -u -d "$PLAY_UPLOAD_KEY_VALID_AFTER" +%s)" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Google Play upload-key reset is still activating; publishing is deferred until $PLAY_UPLOAD_KEY_VALID_AFTER."
+          fi
       - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true'
         with:
           ruby-version: "3.3"
           bundler-cache: true
       - name: Install Fastlane
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true'
         run: bundle install --jobs 4 --retry 3
       - name: Publish to Google Play
-        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true'
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true'
         env:
           SUPPLY_JSON_KEY_DATA: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
         run: bundle exec fastlane android deploy aab:android-release/app-release.aab
+      - name: Defer Google Play publish while upload key activates
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready != 'true'
+        run: echo "::notice::Google Play publishing deferred until the reset upload certificate becomes valid."
       - name: Skip Google Play publish
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON == '' || env.ANDROID_SIGNING_READY != 'true'
         run: echo "::notice::Google Play publishing skipped because Play credentials or Android signing credentials are not configured."
