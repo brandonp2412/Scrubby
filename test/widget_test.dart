@@ -1381,7 +1381,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final preview = find.byKey(const ValueKey('notification-history-preview'));
+    final preview = find.ancestor(
+      of: find.text('Notification history'),
+      matching: find.byType(InkWell),
+    );
     expect(preview, findsOneWidget);
     expect(
       find.byKey(const ValueKey('notification-history-preview-list')),
@@ -1438,10 +1441,7 @@ void main() {
         ),
       );
 
-      expect(
-        find.byKey(const ValueKey('manual-cleaning-mode')),
-        findsOneWidget,
-      );
+      expect(find.text('Cleaning mode'), findsOneWidget);
       expect(find.text('Vacuum'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
