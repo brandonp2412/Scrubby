@@ -177,3 +177,98 @@ String prettyState(String value) {
   if (value.isEmpty) return value;
   return '${value[0].toUpperCase()}${value.substring(1).replaceAll('_', ' ')}';
 }
+
+IconData optionIcon(String value, {String? field}) {
+  final text = '${field ?? ''} $value'
+      .toLowerCase()
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .trim();
+
+  if (text.contains('vacuum & mop') ||
+      text.contains('vacuum and mop') ||
+      text.contains('sweep and mop')) {
+    return Icons.cleaning_services_rounded;
+  }
+  if (text.contains('mop after') || text.contains('after vacuum')) {
+    return Icons.format_list_numbered_rounded;
+  }
+  if (text.contains('mop') || text.contains('mopping')) {
+    return Icons.water_drop_rounded;
+  }
+  if (text.contains('vacuum') || text.contains('sweep')) {
+    return Icons.cyclone_rounded;
+  }
+  if (text.contains('quiet') || text.contains('silent')) {
+    return Icons.volume_off_rounded;
+  }
+  if (text.contains('balanced') ||
+      text.contains('standard') ||
+      text.contains('normal')) {
+    return Icons.balance_rounded;
+  }
+  if (text.contains('turbo') ||
+      text.contains('max') ||
+      text.contains('strong')) {
+    return Icons.bolt_rounded;
+  }
+  if (text.contains('suction') || text.contains('power')) {
+    return Icons.air_rounded;
+  }
+  if (text.contains('cleangenius') ||
+      text.contains('clean genius') ||
+      text.contains('smart') ||
+      text.contains('intelligent')) {
+    return Icons.auto_awesome_rounded;
+  }
+  if (text.contains('custom') || text.endsWith(' off')) {
+    return Icons.tune_rounded;
+  }
+  if (text.contains('deep') || text.contains('intensive')) {
+    return Icons.auto_fix_high_rounded;
+  }
+  if (text.contains('quick') || text.contains('fast')) {
+    return Icons.speed_rounded;
+  }
+  if (text.contains('route')) return Icons.route_rounded;
+  if (text.contains('cycle')) return Icons.repeat_rounded;
+  if (text.contains('room')) return Icons.meeting_room_rounded;
+  if (text.contains('on') || text.contains('enable')) {
+    return Icons.check_circle_rounded;
+  }
+  if (text.contains('off') || text.contains('disable')) {
+    return Icons.cancel_rounded;
+  }
+  return Icons.auto_awesome_rounded;
+}
+
+class OptionLabel extends StatelessWidget {
+  const OptionLabel({
+    super.key,
+    required this.value,
+    this.label,
+    this.field,
+    this.icon,
+  });
+
+  final String value;
+  final String? label;
+  final String? field;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(icon ?? optionIcon(value, field: field), size: 20),
+      const SizedBox(width: 10),
+      Flexible(
+        child: Text(
+          label ?? value,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+    ],
+  );
+}

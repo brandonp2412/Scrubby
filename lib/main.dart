@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import 'logging.dart';
 import 'core/app_state.dart';
 import 'core/notifications.dart';
 import 'screens/dashboard_shell.dart';
@@ -10,6 +11,8 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  installTalkerErrorHandlers();
+  talker.info('Starting Scrubby');
   await LocalVacuumNotificationPresenter.instance.initialize();
   await configureBackgroundNotificationService();
   await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

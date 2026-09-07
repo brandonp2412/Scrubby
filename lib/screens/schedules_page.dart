@@ -390,7 +390,6 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
       .settingsForVacuum(vacuumEntityId)
       .where(
         (setting) =>
-            setting.available &&
             setting.kind == VacuumSettingKind.select &&
             setting.options.isNotEmpty,
       )
@@ -425,7 +424,16 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
     return matches.isEmpty ? null : matches.first;
   }
 
-  VacuumSetting? get cleaningModeSetting => _exactSetting('cleaning mode');
+  VacuumSetting? get cleaningModeSetting {
+    final matches = availableSelects.where((setting) {
+      final searchable = _searchable(setting);
+      return searchable.contains('cleaning mode') &&
+          !searchable.contains('carpet cleaning mode') &&
+          !RegExp(r'_room_\d+_cleaning_mode$').hasMatch(setting.entityId);
+    });
+    return matches.firstOrNull;
+  }
+
   VacuumSetting? get cleaningRouteSetting => _exactSetting('cleaning route');
   SegmentCleaningCapability? get segmentCapability =>
       widget.state.segmentCleaningCapabilityFor(vacuumEntityId);
@@ -575,7 +583,7 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                     for (final vacuum in widget.state.vacuums)
                       DropdownMenuItem(
                         value: vacuum.entityId,
-                        child: Text(vacuum.name),
+                        child: OptionLabel(value: vacuum.name, field: 'Vacuum'),
                       ),
                   ],
                   onChanged: (value) async {
@@ -646,12 +654,23 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                     for (final option in cleanGenius.options)
                       DropdownMenuItem(
                         value: option,
-                        child: Text(_isOff(option) ? 'Custom' : option),
+                        child: OptionLabel(
+                          value: _isOff(option) ? 'Custom' : option,
+                          field: 'Cleaning plan',
+                        ),
                       ),
                   ],
                   onChanged: (value) => setState(
                     () => settingValues[cleanGenius.entityId] = value,
                   ),
+                ),
+              ],
+              if (cleaningMode == null) ...[
+                const SizedBox(height: 14),
+                Text(
+                  'Cleaning mode is not exposed by Home Assistant. Enable the vacuum’s Cleaning mode select entity to choose Vacuum, Mop, or Vacuum & mop.',
+                  key: const ValueKey('schedule-cleaning-mode-unavailable'),
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
               if (!usesCleanGenius && cleaningMode != null) ...[
@@ -678,7 +697,13 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                   decoration: const InputDecoration(labelText: 'Suction power'),
                   items: [
                     for (final speed in selectedVacuum.fanSpeeds)
-                      DropdownMenuItem(value: speed, child: Text(speed)),
+                      DropdownMenuItem(
+                        value: speed,
+                        child: OptionLabel(
+                          value: speed,
+                          field: 'Suction power',
+                        ),
+                      ),
                   ],
                   onChanged: (value) => setState(() => fanSpeed = value),
                 ),
@@ -705,8 +730,9 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
                     for (var count = 1; count <= maximumCycles; count++)
                       DropdownMenuItem(
                         value: count,
-                        child: Text(
-                          '$count ${count == 1 ? 'cycle' : 'cycles'}',
+                        child: OptionLabel(
+                          value: '$count ${count == 1 ? 'cycle' : 'cycles'}',
+                          field: 'Cycles',
                         ),
                       ),
                   ],
@@ -810,10 +836,12 @@ class _ScheduleSettingField extends StatelessWidget {
         for (final choice in choices)
           DropdownMenuItem(
             value: choice,
-            child: Text(
-              setting.kind == VacuumSettingKind.toggle
+            child: OptionLabel(
+              value: choice,
+              label: setting.kind == VacuumSettingKind.toggle
                   ? (choice == 'on' ? 'On' : 'Off')
                   : (valueLabel?.call(choice) ?? choice),
+              field: setting.name,
             ),
           ),
       ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 
@@ -15,11 +16,13 @@ class RoomsPage extends StatefulWidget {
 class _RoomsPageState extends State<RoomsPage> {
   final selected = <String>{};
   String? mode;
+  String? cleaningMode;
 
   @override
   void initState() {
     super.initState();
     mode = widget.state.vacuum.fanSpeed;
+    cleaningMode = _cleaningModeSetting?.value;
   }
 
   @override
@@ -28,6 +31,7 @@ class _RoomsPageState extends State<RoomsPage> {
     if (oldWidget.state.vacuum.entityId != widget.state.vacuum.entityId) {
       selected.clear();
       mode = widget.state.vacuum.fanSpeed;
+      cleaningMode = _cleaningModeSetting?.value;
     }
   }
 
@@ -44,11 +48,51 @@ class _RoomsPageState extends State<RoomsPage> {
     Color(0xFFFFDBD1),
   ];
 
+  VacuumSetting? get _cleaningModeSetting {
+    final matches = widget.state.vacuumSettings.where((setting) {
+      final name = '${setting.name} ${setting.entityId}'
+          .toLowerCase()
+          .replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+      return setting.kind == VacuumSettingKind.select &&
+          name.contains('cleaning mode') &&
+          !name.contains('carpet cleaning mode') &&
+          !RegExp(r'_room_\d+_cleaning_mode$').hasMatch(setting.entityId) &&
+          setting.options.isNotEmpty;
+    });
+    return matches.firstOrNull;
+  }
+
+  String? get _effectiveCleaningMode =>
+      _validCleaningMode(_cleaningModeSetting);
+
+  String? _validCleaningMode(VacuumSetting? setting) {
+    if (setting == null || setting.options.isEmpty) return null;
+    if (cleaningMode != null && setting.options.contains(cleaningMode)) {
+      return cleaningMode;
+    }
+    if (setting.options.contains(setting.value)) return setting.value;
+    return setting.options.first;
+  }
+
+  bool get _modeUsesSuction {
+    final normalized = _effectiveCleaningMode
+        ?.toLowerCase()
+        .replaceAll('_', ' ')
+        .trim();
+    return normalized != 'mop' && normalized != 'mopping';
+  }
+
   @override
   Widget build(BuildContext context) {
     final powerModes = widget.state.vacuum.fanSpeeds.isEmpty
         ? const ['Quiet', 'Balanced', 'Turbo']
         : widget.state.vacuum.fanSpeeds;
+    final selectedPowerMode = powerModes.contains(mode)
+        ? mode
+        : powerModes.contains(widget.state.vacuum.fanSpeed)
+        ? widget.state.vacuum.fanSpeed
+        : powerModes.first;
+    final cleaningModeSetting = _cleaningModeSetting;
     final labelsBySegment = {
       for (final label in widget.state.mapRoomLabels) label.segmentId: label,
     };
@@ -121,25 +165,58 @@ class _RoomsPageState extends State<RoomsPage> {
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<String>(
-                  items: powerModes
-                      .map(
-                        (powerMode) => DropdownMenuItem(
-                          value: powerMode,
-                          child: Text(
-                            powerMode,
-                            maxLines: 1,
-                            softWrap: false,
-                            overflow: TextOverflow.ellipsis,
+                if (cleaningModeSetting != null) ...[
+                  DropdownButtonFormField<String>(
+                    key: const ValueKey('manual-cleaning-mode'),
+                    isExpanded: true,
+                    initialValue: _effectiveCleaningMode,
+                    decoration: const InputDecoration(
+                      labelText: 'Cleaning mode',
+                    ),
+                    items: [
+                      for (final option in cleaningModeSetting.options)
+                        DropdownMenuItem(
+                          value: option,
+                          child: OptionLabel(
+                            value: option,
+                            label: _cleaningModeLabel(option),
+                            field: 'Cleaning mode',
                           ),
                         ),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() {
-                    mode = value;
-                  }),
-                  initialValue: mode,
-                ),
+                    ],
+                    onChanged: (value) => setState(() => cleaningMode = value),
+                  ),
+                  if (_modeUsesSuction) const SizedBox(height: 14),
+                ] else ...[
+                  Text(
+                    'Cleaning mode is not exposed by Home Assistant. Enable the vacuum’s Cleaning mode select entity, then refresh its settings.',
+                    key: const ValueKey('manual-cleaning-mode-unavailable'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 14),
+                ],
+                if (_modeUsesSuction)
+                  DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    items: powerModes
+                        .map(
+                          (powerMode) => DropdownMenuItem(
+                            value: powerMode,
+                            child: OptionLabel(
+                              value: powerMode,
+                              field: 'Suction power',
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      mode = value;
+                    }),
+                    initialValue: selectedPowerMode,
+                    decoration: const InputDecoration(
+                      labelText: 'Suction power',
+                    ),
+                  ),
               ],
             ),
           ),
@@ -179,11 +256,20 @@ class _RoomsPageState extends State<RoomsPage> {
         .toList(growable: false);
     try {
       final supportedPower = widget.state.vacuum.fanSpeeds;
-      final selectedPower =
-          mode ??
-          widget.state.vacuum.fanSpeed ??
-          (supportedPower.isEmpty ? 'Balanced' : supportedPower.first);
-      await widget.state.setFanSpeed(selectedPower);
+      final selectedPower = supportedPower.contains(mode)
+          ? mode!
+          : supportedPower.contains(widget.state.vacuum.fanSpeed)
+          ? widget.state.vacuum.fanSpeed!
+          : (supportedPower.isEmpty ? 'Balanced' : supportedPower.first);
+      final cleaningModeSetting = _cleaningModeSetting;
+      final selectedCleaningMode = _effectiveCleaningMode;
+      if (cleaningModeSetting != null && selectedCleaningMode != null) {
+        await widget.state.setVacuumSetting(
+          cleaningModeSetting,
+          selectedCleaningMode,
+        );
+      }
+      if (_modeUsesSuction) await widget.state.setFanSpeed(selectedPower);
       await widget.state.cleanRooms(
         selectedRooms.map((room) => room.segmentId!).toList(growable: false),
       );
@@ -217,6 +303,17 @@ class _RoomsPageState extends State<RoomsPage> {
         ).showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
+  }
+
+  String _cleaningModeLabel(String value) {
+    final normalized = value.toLowerCase().replaceAll('_', ' ').trim();
+    if (normalized == 'sweeping' || normalized == 'vacuuming') return 'Vacuum';
+    if (normalized == 'mopping') return 'Mop';
+    if (normalized == 'sweeping and mopping' ||
+        normalized == 'vacuum and mop') {
+      return 'Vacuum & mop';
+    }
+    return value;
   }
 }
 

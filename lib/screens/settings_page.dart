@@ -45,6 +45,11 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final deviceInfo = state.deviceInfoForVacuum(state.vacuum.entityId);
+    final deviceDescription = [
+      deviceInfo?.manufacturer,
+      deviceInfo?.model,
+    ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' ');
     final groups = <String, List<VacuumSetting>>{};
     final unavailableSettings = <VacuumSetting>[];
     for (final setting in state.vacuumSettings) {
@@ -65,6 +70,16 @@ class _SettingsPageState extends State<SettingsPage> {
                 'Every setting your robot exposes through Home Assistant.',
           ),
           const SizedBox(height: 14),
+          if (deviceDescription.isNotEmpty) ...[
+            Text(
+              deviceDescription,
+              key: const ValueKey('vacuum-make-model'),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 10),
+          ],
           Align(
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
@@ -391,7 +406,10 @@ class _SettingTile extends StatelessWidget {
                 underline: const SizedBox.shrink(),
                 items: [
                   for (final option in setting.options)
-                    DropdownMenuItem(value: option, child: Text(option)),
+                    DropdownMenuItem(
+                      value: option,
+                      child: OptionLabel(value: option, field: setting.name),
+                    ),
                 ],
                 onChanged: busy || !setting.available
                     ? null

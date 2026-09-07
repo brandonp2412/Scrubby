@@ -5,6 +5,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../core/app_state.dart';
 import '../core/home_assistant.dart';
 import '../theme.dart';
+import '../widgets/shared.dart';
 import 'home_page.dart';
 import 'rooms_page.dart';
 import 'schedules_page.dart';
@@ -263,7 +264,13 @@ class _TopBar extends StatelessWidget {
               onSelected: state.selectVacuum,
               itemBuilder: (_) => [
                 for (var i = 0; i < state.vacuums.length; i++)
-                  PopupMenuItem(value: i, child: Text(state.vacuums[i].name)),
+                  PopupMenuItem(
+                    value: i,
+                    child: OptionLabel(
+                      value: state.vacuums[i].name,
+                      field: 'Vacuum',
+                    ),
+                  ),
               ],
               child: _RobotPill(state: state),
             )

@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'home_assistant.dart';
+import '../logging.dart';
 
 /// Displays Dreame events using a separate operating-system category for each
 /// notification family exposed by the Home Assistant integration.
@@ -22,11 +24,36 @@ const _backgroundNotificationId = 5100;
 const _androidNotificationIcon = 'ic_bg_service_small';
 const _notificationHistoryKey = 'notification_history';
 
+Duration notificationDuplicateWindow(DreameNotificationCategory category) =>
+    category == DreameNotificationCategory.consumable
+    ? const Duration(hours: 24)
+    : const Duration(minutes: 2);
+
+bool isDuplicateVacuumNotification(
+  DreameNotification notification, {
+  required String entityId,
+  required DreameNotificationCategory category,
+  required String title,
+  required String body,
+  required DateTime createdAt,
+  DateTime? now,
+}) {
+  if (entityId != notification.entityId ||
+      category != notification.category ||
+      title != notification.title ||
+      body != notification.body) {
+    return false;
+  }
+  return (now ?? DateTime.now()).difference(createdAt).abs() <
+      notificationDuplicateWindow(notification.category);
+}
+
 bool get _supportsAndroidService =>
     !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
 Future<void> configureBackgroundNotificationService() async {
   if (!_supportsAndroidService) return;
+  talker.info('Configuring Android background notification service');
   final notifications = FlutterLocalNotificationsPlugin();
   await notifications
       .resolvePlatformSpecificImplementation<
@@ -66,7 +93,13 @@ Future<void> startBackgroundNotificationService() async {
   if (!_supportsAndroidService) return;
   try {
     await FlutterBackgroundService().startService();
-  } catch (_) {
+    talker.info('Started background notification service');
+  } catch (error, stackTrace) {
+    talker.handle(
+      error,
+      stackTrace,
+      'Could not start background notification service',
+    );
     // The plugin is intentionally unavailable on desktop and in widget tests.
   }
 }
@@ -75,7 +108,13 @@ Future<void> stopBackgroundNotificationService() async {
   if (!_supportsAndroidService) return;
   try {
     FlutterBackgroundService().invoke('stop');
-  } catch (_) {
+    talker.info('Requested background notification service stop');
+  } catch (error, stackTrace) {
+    talker.handle(
+      error,
+      stackTrace,
+      'Could not stop background notification service',
+    );
     // The plugin is intentionally unavailable on desktop and in widget tests.
   }
 }
@@ -85,6 +124,9 @@ Future<void> stopBackgroundNotificationService() async {
 /// only while the app is backgrounded.
 @pragma('vm:entry-point')
 Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  installTalkerErrorHandlers();
+  talker.info('Background notification service started');
   if (service is AndroidServiceInstance) {
     await service.setAsForegroundService();
   }
@@ -98,6 +140,7 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
     await notifications?.cancel();
     await client?.close();
     await service.stopSelf();
+    talker.info('Background notification service stopped');
   }
 
   service.on('stop').listen((_) => stop());
@@ -106,6 +149,9 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
   final url = credentials['home_assistant_url'];
   final token = credentials['home_assistant_token'];
   if (url == null || token == null || url.isEmpty || token.isEmpty) {
+    talker.warning(
+      'Background service stopped: no saved Home Assistant session',
+    );
     await stop();
     return;
   }
@@ -114,22 +160,40 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
     client = HomeAssistantClient(url, token);
     await client.connect();
     final vacuums = await client.fetchVacuums();
+    talker.info(
+      'Background service connected; monitoring ${vacuums.length} vacuums',
+    );
     final names = {for (final vacuum in vacuums) vacuum.entityId: vacuum.name};
+    var notificationQueue = Future<void>.value();
     notifications = client.notificationUpdates.listen((notification) {
-      unawaited(_recordBackgroundNotification(storage, notification));
-      unawaited(
-        LocalVacuumNotificationPresenter.instance.show(
-          notification,
-          vacuumName: names[notification.entityId],
-        ),
-      );
+      talker.info('Received ${notification.category.name} vacuum notification');
+      notificationQueue = notificationQueue.then((_) async {
+        try {
+          final shouldNotify = await _recordBackgroundNotification(
+            storage,
+            notification,
+          );
+          if (!shouldNotify) return;
+          await LocalVacuumNotificationPresenter.instance.show(
+            notification,
+            vacuumName: names[notification.entityId],
+          );
+        } catch (error, stackTrace) {
+          talker.handle(
+            error,
+            stackTrace,
+            'Could not process background vacuum notification',
+          );
+        }
+      });
     });
-  } catch (_) {
+  } catch (error, stackTrace) {
+    talker.handle(error, stackTrace, 'Background notification service failed');
     await stop();
   }
 }
 
-Future<void> _recordBackgroundNotification(
+Future<bool> _recordBackgroundNotification(
   FlutterSecureStorage storage,
   DreameNotification notification,
 ) async {
@@ -139,31 +203,26 @@ Future<void> _recordBackgroundNotification(
         jsonDecode(await storage.read(key: _notificationHistoryKey) ?? '[]')
             as List<dynamic>;
     final records = saved.whereType<Map<String, dynamic>>().toList();
-
-    bool matches(Map<String, dynamic> record) =>
-        record['entity_id'] == notification.entityId &&
-        record['category'] == notification.category.name &&
-        record['title'] == notification.title &&
-        record['body'] == notification.body;
-
-    // Home Assistant persistent notifications are keyed and updated in place,
-    // rather than appended every time an integration emits the same condition.
-    // Dreame re-emits consumable/warning events (for example after each cleanup),
-    // so mirror HA's behaviour for every non-cleanup notification family.
-    if (notification.category != DreameNotificationCategory.cleanup) {
-      records.removeWhere(matches);
-    } else {
-      final duplicate = records.any((record) {
-        if (!matches(record)) return false;
-        final recordedAt = DateTime.tryParse(
-          record['created_at']?.toString() ?? '',
-        );
-        return recordedAt != null &&
-            now.difference(recordedAt).abs() < const Duration(seconds: 5);
-      });
-      if (duplicate) return;
-    }
-
+    final duplicate = records.any((record) {
+      final recordedAt = DateTime.tryParse(
+        record['created_at']?.toString() ?? '',
+      );
+      if (recordedAt == null) return false;
+      final category = DreameNotificationCategory.values.firstWhere(
+        (value) => value.name == record['category'],
+        orElse: () => DreameNotificationCategory.information,
+      );
+      return isDuplicateVacuumNotification(
+        notification,
+        entityId: record['entity_id']?.toString() ?? '',
+        category: category,
+        title: record['title']?.toString() ?? '',
+        body: record['body']?.toString() ?? '',
+        createdAt: recordedAt,
+        now: now,
+      );
+    });
+    if (duplicate) return false;
     records.insert(0, {
       'category': notification.category.name,
       'entity_id': notification.entityId,
@@ -175,8 +234,15 @@ Future<void> _recordBackgroundNotification(
       key: _notificationHistoryKey,
       value: jsonEncode(records.take(30).toList()),
     );
-  } catch (_) {
+    return true;
+  } catch (error, stackTrace) {
+    talker.handle(
+      error,
+      stackTrace,
+      'Could not save background notification history',
+    );
     // A history write must never prevent the native alert from being posted.
+    return true;
   }
 }
 
@@ -243,6 +309,7 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
   Future<void> _initialize() async {
     if (!_isSupportedPlatform) {
       _supported = false;
+      talker.info('Local notifications are unavailable on this platform');
       return;
     }
     try {
@@ -272,8 +339,11 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
       }
     } catch (error, stackTrace) {
       // A notification plugin failure must never prevent Home Assistant login.
-      debugPrint('Could not initialize local notifications: $error');
-      debugPrintStack(stackTrace: stackTrace);
+      talker.handle(
+        error,
+        stackTrace,
+        'Could not initialize local notifications',
+      );
       _supported = false;
     }
   }
@@ -313,6 +383,7 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
   }) async {
     await initialize();
     if (!_supported) return;
+    talker.debug('Showing ${notification.category.name} vacuum notification');
     final channel = notification.category;
     final androidChannel = _androidChannels.firstWhere(
       (item) => item.id == channel.channelId,
@@ -337,6 +408,7 @@ class LocalVacuumNotificationPresenter implements VacuumNotificationPresenter {
           importance: androidChannel.importance,
           priority: channel.priority,
           category: channel.androidCategory,
+          onlyAlertOnce: true,
         ),
         iOS: DarwinNotificationDetails(
           categoryIdentifier: channel.channelId,

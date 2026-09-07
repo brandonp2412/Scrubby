@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'home_assistant.dart';
 import 'notifications.dart';
+import '../logging.dart';
 
 class CleaningSchedule {
   const CleaningSchedule({
@@ -189,6 +190,7 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _vacuumNames = {};
   final Map<String, List<VacuumSegment>> _vacuumSegments = {};
   final Map<String, List<VacuumSetting>> _vacuumSettings = {};
+  final Map<String, VacuumDeviceInfo> _vacuumDeviceInfo = {};
   final Map<String, SegmentCleaningCapability> _segmentCleaningCapabilities =
       {};
   String? roomCapabilityError;
@@ -212,6 +214,8 @@ class AppState extends ChangeNotifier {
       _vacuumSettings[vacuum.entityId] ?? const [];
   List<VacuumSetting> settingsForVacuum(String entityId) =>
       _vacuumSettings[entityId] ?? const [];
+  VacuumDeviceInfo? deviceInfoForVacuum(String entityId) =>
+      _vacuumDeviceInfo[entityId];
   SegmentCleaningCapability? segmentCleaningCapabilityFor(String entityId) =>
       _segmentCleaningCapabilities[entityId];
   List<VacuumSegment> segmentsForVacuum(String entityId) =>
@@ -241,6 +245,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    talker.info('Restoring saved Scrubby session');
     try {
       final credentials = await _secureStorage.readAll();
       savedUrl = credentials[_urlKey];
@@ -251,7 +256,12 @@ class AppState extends ChangeNotifier {
       if (savedUrl != null && token != null) {
         await login(savedUrl!, token, persist: false);
       }
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(
+        error,
+        stackTrace,
+        'Could not restore saved Scrubby session',
+      );
       restoreError =
           'Could not restore the saved connection. Please reconnect.';
     } finally {
@@ -261,6 +271,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> login(String url, String token, {bool persist = true}) async {
+    talker.info('Connecting to Home Assistant');
     final client = HomeAssistantClient(url, token.trim());
     try {
       final location = await client.connect();
@@ -296,7 +307,11 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       unawaited(_notificationPresenter.requestPermissions());
       await refreshSchedules();
-    } catch (_) {
+      talker.info(
+        'Connected to Home Assistant with ${entities.length} vacuums',
+      );
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Home Assistant login failed');
       await client.close();
       rethrow;
     }
@@ -315,22 +330,28 @@ class AppState extends ChangeNotifier {
 
   void _showNotification(DreameNotification notification) {
     final now = DateTime.now();
-    final isRecentDuplicate = notificationHistory.any(
-      (item) =>
-          item.entityId == notification.entityId &&
-          item.category == notification.category &&
-          item.title == notification.title &&
-          item.body == notification.body &&
-          now.difference(item.createdAt).abs() < const Duration(seconds: 5),
+    final isDuplicate = notificationHistory.any(
+      (item) => isDuplicateVacuumNotification(
+        notification,
+        entityId: item.entityId,
+        category: item.category,
+        title: item.title,
+        body: item.body,
+        createdAt: item.createdAt,
+        now: now,
+      ),
     );
-    if (isRecentDuplicate) return;
-
-    final record = VacuumNotificationRecord(
-      category: notification.category,
-      entityId: notification.entityId,
-      title: notification.title,
-      body: notification.body,
-      createdAt: now,
+    if (isDuplicate) return;
+    talker.info('Received ${notification.category.name} vacuum notification');
+    notificationHistory.insert(
+      0,
+      VacuumNotificationRecord(
+        category: notification.category,
+        entityId: notification.entityId,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now,
+      ),
     );
     final persistentIdentity = record.persistentIdentity;
     if (persistentIdentity != null) {
@@ -357,25 +378,39 @@ class AppState extends ChangeNotifier {
     if (encoded == null || encoded.isEmpty) return;
     try {
       final saved = jsonDecode(encoded) as List<dynamic>;
-      final restored = saved
-          .whereType<Map<String, dynamic>>()
-          .map(VacuumNotificationRecord.fromJson)
-          .toList(growable: false);
-      final seenPersistent = <String>{};
-      notificationHistory.clear();
-      for (final item in restored) {
-        final persistentIdentity = item.persistentIdentity;
-        if (persistentIdentity != null &&
-            !seenPersistent.add(persistentIdentity)) {
-          continue;
-        }
-        notificationHistory.add(item);
-        if (notificationHistory.length == 30) break;
+      final restored = <VacuumNotificationRecord>[];
+      for (final record in saved.whereType<Map<String, dynamic>>().map(
+        VacuumNotificationRecord.fromJson,
+      )) {
+        final notification = DreameNotification(
+          category: record.category,
+          entityId: record.entityId,
+          title: record.title,
+          body: record.body,
+        );
+        final duplicate = restored.any(
+          (item) => isDuplicateVacuumNotification(
+            notification,
+            entityId: item.entityId,
+            category: item.category,
+            title: item.title,
+            body: item.body,
+            createdAt: item.createdAt,
+            now: record.createdAt,
+          ),
+        );
+        if (!duplicate) restored.add(record);
+        if (restored.length == 30) break;
       }
-      if (notificationHistory.length != restored.take(30).length) {
-        unawaited(_persistNotificationHistory());
-      }
-    } catch (_) {
+      notificationHistory
+        ..clear()
+        ..addAll(restored);
+    } catch (error, stackTrace) {
+      talker.handle(
+        error,
+        stackTrace,
+        'Could not restore notification history',
+      );
       // A malformed local history must not block connection restoration.
     }
   }
@@ -398,6 +433,7 @@ class AppState extends ChangeNotifier {
     final wasDisconnected =
         connectionStatus != HomeAssistantConnectionStatus.connected;
     connectionStatus = status;
+    talker.info('Home Assistant connection is ${status.name}');
     notifyListeners();
     if (wasDisconnected &&
         status == HomeAssistantConnectionStatus.connected &&
@@ -414,6 +450,7 @@ class AppState extends ChangeNotifier {
     await _notificationSubscription?.cancel();
     _notificationSubscription = null;
     await startBackgroundNotificationService();
+    talker.info('Moved notification monitoring to background service');
   }
 
   Future<void> enterForeground() async {
@@ -424,9 +461,11 @@ class AppState extends ChangeNotifier {
         _showNotification,
       );
     }
+    talker.info('Resumed foreground notification monitoring');
   }
 
   void startDemo() {
+    talker.info('Started demo mode');
     _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
     _notificationSubscription?.cancel();
@@ -546,6 +585,10 @@ class AppState extends ChangeNotifier {
         unit: 'h',
       ),
     ];
+    _vacuumDeviceInfo[vacuum.entityId] = const VacuumDeviceInfo(
+      manufacturer: 'Dreame',
+      model: 'L20 Ultra',
+    );
     notifyListeners();
   }
 
@@ -568,10 +611,36 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       _vacuumSettings[entityId] = await _client!.fetchVacuumSettings(entityId);
-    } catch (error) {
-      if (generation == _settingsRefreshGeneration) {
-        settingsError = _message(error);
+      final cleaningModes = _vacuumSettings[entityId]!.where((setting) {
+        final searchable = '${setting.entityId} ${setting.name}'
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9]+'), ' ');
+        return searchable.contains('cleaning mode') &&
+            !searchable.contains('carpet cleaning mode');
+      });
+      if (cleaningModes.isEmpty) {
+        talker.warning(
+          'No cleaning mode entity discovered for $entityId; '
+          '${_vacuumSettings[entityId]!.length} supported settings loaded',
+        );
+      } else {
+        for (final setting in cleaningModes) {
+          talker.info(
+            'Cleaning mode discovery: entity=${setting.entityId}, '
+            'name=${setting.name}, state=${setting.value}, '
+            'available=${setting.available}, options=${setting.options}',
+          );
+        }
       }
+      try {
+        final info = await _client!.fetchVacuumDeviceInfo(entityId);
+        if (info != null) _vacuumDeviceInfo[entityId] = info;
+      } catch (error, stackTrace) {
+        talker.handle(error, stackTrace, 'Could not load vacuum device info');
+      }
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not load vacuum settings');
+      settingsError = _message(error);
     } finally {
       if (generation == _settingsRefreshGeneration) settingsLoading = false;
       notifyListeners();
@@ -584,6 +653,7 @@ class AppState extends ChangeNotifier {
     busySettingIds.add(setting.entityId);
     notifyListeners();
     try {
+      talker.info('Updating vacuum setting ${setting.entityId}');
       if (!isDemo) await _client!.setVacuumSetting(setting, value);
       if (setting.kind != VacuumSettingKind.action) {
         final settings = _vacuumSettings[targetVacuumId];
@@ -622,6 +692,7 @@ class AppState extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      talker.info('Setting vacuum fan speed');
       if (!isDemo) {
         await _client?.callVacuumService(
           'set_fan_speed',
@@ -760,7 +831,12 @@ class AppState extends ChangeNotifier {
     SegmentCleaningCapability? capability;
     try {
       capability = await client.fetchSegmentCleaningCapability();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(
+        error,
+        stackTrace,
+        'Could not discover room-cleaning capability',
+      );
       roomCapabilityError = _message(error);
     }
     for (final item in vacuums.where((item) => item.supportsAreaCleaning)) {
@@ -771,7 +847,8 @@ class AppState extends ChangeNotifier {
         if (capability != null) {
           _segmentCleaningCapabilities[item.entityId] = capability;
         }
-      } catch (error) {
+      } catch (error, stackTrace) {
+        talker.handle(error, stackTrace, 'Could not load vacuum rooms');
         roomCapabilityError = _message(error);
       }
     }
@@ -786,6 +863,7 @@ class AppState extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
+      talker.info('Starting room cleaning for ${segmentIds.length} rooms');
       if (!isDemo) {
         await _client!.cleanVacuumSegments(targetVacuumId, segmentIds);
       }
@@ -805,11 +883,9 @@ class AppState extends ChangeNotifier {
     isBusy = true;
     notifyListeners();
     try {
-      if (!isDemo) await _client?.callVacuumService(service, targetVacuumId);
-      _updateVacuum(
-        targetVacuumId,
-        (current) => current.copyWith(state: newState),
-      );
+      talker.info('Running vacuum service: $service');
+      if (!isDemo) await _client?.callVacuumService(service, vacuum.entityId);
+      vacuums[selectedVacuum] = vacuum.copyWith(state: newState);
     } finally {
       isBusy = false;
       notifyListeners();
@@ -844,7 +920,8 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addAll(_applyScheduleOrder(loadedSchedules, savedOrder));
       await _saveScheduleOrder();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not load cleaning schedules');
       scheduleError = _message(error);
     } finally {
       schedulesLoading = false;
@@ -862,6 +939,7 @@ class AppState extends ChangeNotifier {
     scheduleError = null;
     notifyListeners();
     try {
+      talker.info('Creating cleaning schedule');
       await _client!.createScrubbySchedule(
         id: schedule.id,
         title: schedule.title,
@@ -875,7 +953,8 @@ class AppState extends ChangeNotifier {
       );
       await refreshSchedules();
       return true;
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not create cleaning schedule');
       scheduleError = _message(error);
       return false;
     } finally {
@@ -896,6 +975,7 @@ class AppState extends ChangeNotifier {
     scheduleError = null;
     notifyListeners();
     try {
+      talker.info('Updating cleaning schedule');
       await _client!.createScrubbySchedule(
         id: schedule.id,
         title: schedule.title,
@@ -909,7 +989,8 @@ class AppState extends ChangeNotifier {
       );
       await refreshSchedules();
       return true;
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not update cleaning schedule');
       scheduleError = _message(error);
       return false;
     } finally {
@@ -931,11 +1012,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       await _client!.setScrubbyScheduleEnabled(schedule.entityId, value);
-    } catch (error) {
-      final currentIndex = schedules.indexWhere(
-        (item) => item.id == schedule.id,
+    } catch (error, stackTrace) {
+      talker.handle(
+        error,
+        stackTrace,
+        'Could not update cleaning schedule state',
       );
-      if (currentIndex >= 0) schedules[currentIndex] = schedule;
+      schedules[index] = schedule;
       scheduleError = _message(error);
     } finally {
       busyScheduleIds.remove(schedule.id);
@@ -949,10 +1032,12 @@ class AppState extends ChangeNotifier {
     scheduleError = null;
     notifyListeners();
     try {
+      talker.info('Deleting cleaning schedule');
       if (!isDemo) await _client!.deleteScrubbySchedule(schedule.id);
       schedules.removeWhere((item) => item.id == schedule.id);
       await _saveScheduleOrder();
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not delete cleaning schedule');
       scheduleError = _message(error);
     } finally {
       busyScheduleIds.remove(schedule.id);

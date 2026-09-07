@@ -11,6 +11,7 @@ import 'package:http/testing.dart';
 import 'package:scrubby/main.dart';
 import 'package:scrubby/core/app_state.dart';
 import 'package:scrubby/core/home_assistant.dart';
+import 'package:scrubby/core/notifications.dart';
 import 'package:scrubby/screens/dashboard_shell.dart';
 import 'package:scrubby/screens/home_page.dart';
 import 'package:scrubby/screens/rooms_page.dart';
@@ -469,6 +470,76 @@ void main() {
     expect(
       parse('error', {'error': 'Wheel blocked', 'code': 3}).category,
       DreameNotificationCategory.error,
+    );
+  });
+
+  test('suppresses repeated consumable reminders for 24 hours', () {
+    const notification = DreameNotification(
+      category: DreameNotificationCategory.consumable,
+      entityId: 'vacuum.dreame',
+      title: 'Maintenance needed',
+      body: 'Clean the sensors and reset their counter.',
+    );
+    final now = DateTime(2026, 9, 1, 20);
+
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(hours: 23)),
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(hours: 25)),
+        now: now,
+      ),
+      isFalse,
+    );
+  });
+
+  test('keeps the short duplicate window for urgent notifications', () {
+    const notification = DreameNotification(
+      category: DreameNotificationCategory.warning,
+      entityId: 'vacuum.dreame',
+      title: 'Robot warning',
+      body: 'Wheel blocked',
+    );
+    final now = DateTime(2026, 9, 1, 20);
+
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(minutes: 1)),
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(minutes: 3)),
+        now: now,
+      ),
+      isFalse,
     );
   });
 
@@ -1274,6 +1345,107 @@ void main() {
     expect(turbo.softWrap, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('notification preview shows four items and opens full history', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final state = AppState(secureStorage: const _FakeSecureStorage())
+      ..startDemo();
+    addTearDown(state.dispose);
+    for (var index = 0; index < 12; index++) {
+      state.notificationHistory.add(
+        VacuumNotificationRecord(
+          category: DreameNotificationCategory.information,
+          entityId: 'vacuum.orbit',
+          title: 'Notification $index',
+          body: 'History item $index',
+          createdAt: DateTime(
+            2026,
+            9,
+            1,
+            20,
+            9,
+          ).subtract(Duration(days: index)),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: HomePage(state: state, onOpenSettings: () {}),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final preview = find.byKey(const ValueKey('notification-history-preview'));
+    expect(preview, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('notification-history-preview-list')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('notification-history-full-list')),
+      findsNothing,
+    );
+    for (var index = 0; index < 4; index++) {
+      expect(find.text('Notification $index'), findsOneWidget);
+    }
+    expect(find.text('Notification 4'), findsNothing);
+    expect(find.textContaining('2026'), findsWidgets);
+    expect(find.textContaining('8:09 PM'), findsWidgets);
+
+    await tester.ensureVisible(preview);
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('notification-history-full-list')),
+      findsOneWidget,
+    );
+    expect(find.text('Notification history'), findsOneWidget);
+    expect(find.text('Notification 0'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Notification 11'),
+      300,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('notification-history-full-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.text('Notification 11'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'shows cleaning mode when Home Assistant reports its state unavailable',
+    (WidgetTester tester) async {
+      final state = AppState(secureStorage: const _FakeSecureStorage())
+        ..startDemo();
+      final index = state.vacuumSettings.indexWhere(
+        (setting) => setting.entityId.endsWith('_cleaning_mode'),
+      );
+      state.vacuumSettings[index] = state.vacuumSettings[index].copyWithValue(
+        'unavailable',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: RoomsPage(state: state)),
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey('manual-cleaning-mode')),
+        findsOneWidget,
+      );
+      expect(find.text('Vacuum'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     're-labelling a mapped room replaces its name on manual controls',

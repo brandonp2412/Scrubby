@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../logging.dart';
+
 class VacuumEntity {
   const VacuumEntity({
     required this.entityId,
@@ -15,6 +17,8 @@ class VacuumEntity {
     this.fanSpeeds = const [],
     this.mapImage,
     this.supportedFeatures = 0,
+    this.manufacturer,
+    this.model,
   });
 
   final String entityId;
@@ -25,6 +29,8 @@ class VacuumEntity {
   final List<String> fanSpeeds;
   final Uint8List? mapImage;
   final int supportedFeatures;
+  final String? manufacturer;
+  final String? model;
 
   bool get isCleaning => state == 'cleaning';
   bool get isPaused => state == 'paused';
@@ -46,6 +52,8 @@ class VacuumEntity {
       fanSpeeds: fanSpeeds,
       mapImage: mapImage,
       supportedFeatures: supportedFeatures,
+      manufacturer: manufacturer,
+      model: model,
     );
   }
 
@@ -62,8 +70,17 @@ class VacuumEntity {
           .toList(growable: false),
       supportedFeatures:
           (attributes['supported_features'] as num?)?.toInt() ?? 0,
+      manufacturer: attributes['manufacturer']?.toString(),
+      model: attributes['model']?.toString(),
     );
   }
+}
+
+class VacuumDeviceInfo {
+  const VacuumDeviceInfo({this.manufacturer, this.model});
+
+  final String? manufacturer;
+  final String? model;
 }
 
 class VacuumSegment {
@@ -220,6 +237,8 @@ class DreameNotification {
       'Auto-empty was not performed during the do-not-disturb period.',
     'cleaning_paused' =>
       'Cleaning is paused and will resume after charging or do-not-disturb.',
+    'replace_temporary_map' || 'replaceTemporaryMap' =>
+      'The temporary map was replaced with the saved map.',
     _ => _humanize(value ?? 'Robot information'),
   };
 
@@ -232,7 +251,12 @@ class DreameNotification {
     if (withoutMarkdown.contains(' ') || withoutMarkdown.contains('\n')) {
       return withoutMarkdown;
     }
-    final words = withoutMarkdown.replaceAll('_', ' ');
+    final words = withoutMarkdown
+        .replaceAllMapped(
+          RegExp(r'([a-z0-9])([A-Z])'),
+          (match) => '${match[1]} ${match[2]}',
+        )
+        .replaceAll(RegExp(r'[_-]+'), ' ');
     return '${words[0].toUpperCase()}${words.substring(1)}';
   }
 
@@ -452,6 +476,7 @@ class HomeAssistantClient {
       'Managed by Scrubby. Edit this schedule in the Scrubby app.';
 
   Future<String> connect() async {
+    talker.info('Opening Home Assistant WebSocket connection');
     await _openSocket(isInitialConnection: true);
     return _locationName;
   }
@@ -479,9 +504,12 @@ class HomeAssistantClient {
         fanSpeeds: vacuum.fanSpeeds,
         mapImage: mapImage,
         supportedFeatures: vacuum.supportedFeatures,
+        manufacturer: vacuum.manufacturer,
+        model: vacuum.model,
       );
       vacuums.add(vacuum);
     }
+    talker.info('Loaded ${vacuums.length} vacuum entities');
     return vacuums;
   }
 
@@ -617,8 +645,14 @@ class HomeAssistantClient {
       await ready.future.timeout(connectionTimeout);
       _reconnectAttempts = 0;
       _setConnectionStatus(HomeAssistantConnectionStatus.connected);
+      talker.info('Home Assistant WebSocket connected');
       _startHeartbeat(generation);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      talker.handle(
+        error,
+        stackTrace,
+        'Home Assistant WebSocket connection failed',
+      );
       if (generation == _connectionGeneration) {
         _connectionGeneration++;
         final subscription = _socketSubscription;
@@ -650,6 +684,9 @@ class HomeAssistantClient {
     if (event == null) return;
     final notification = DreameNotification.fromHomeAssistantEvent(event);
     if (notification != null) {
+      talker.debug(
+        'Received Home Assistant ${notification.category.name} event',
+      );
       _notificationUpdates.add(notification);
       return;
     }
@@ -772,6 +809,7 @@ class HomeAssistantClient {
     _failPendingCommands(
       Exception('The Home Assistant connection was interrupted.'),
     );
+    talker.warning('Home Assistant WebSocket disconnected');
     _scheduleReconnect();
   }
 
@@ -817,6 +855,7 @@ class HomeAssistantClient {
       reconnectDelays.length - 1,
     );
     final delay = reconnectDelays[delayIndex];
+    talker.info('Scheduling Home Assistant reconnect in ${delay.inSeconds}s');
     _reconnectTimer = Timer(
       delay,
       () => _openSocket(isInitialConnection: false),
@@ -826,12 +865,14 @@ class HomeAssistantClient {
   void _setConnectionStatus(HomeAssistantConnectionStatus status) {
     if (_connectionStatus == status) return;
     _connectionStatus = status;
+    talker.info('Home Assistant connection status: ${status.name}');
     if (!_closed) _connectionUpdates.add(status);
   }
 
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    talker.info('Closing Home Assistant connection');
     _reconnectTimer?.cancel();
     _stopHeartbeat();
     for (final timer in _mapRefreshTimers.values) {
@@ -958,6 +999,33 @@ class HomeAssistantClient {
       return category != 0 ? category : a.name.compareTo(b.name);
     });
     return settings;
+  }
+
+  Future<VacuumDeviceInfo?> fetchVacuumDeviceInfo(String vacuumEntityId) async {
+    final registryResult = await _sendSocketCommand({
+      'type': 'config/entity_registry/list',
+    });
+    final registry = (registryResult as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>();
+    final vacuumEntry = registry.where(
+      (entry) => entry['entity_id'] == vacuumEntityId,
+    );
+    if (vacuumEntry.isEmpty) return null;
+    final deviceId = vacuumEntry.first['device_id']?.toString();
+    if (deviceId == null || deviceId.isEmpty) return null;
+
+    final devicesResult = await _sendSocketCommand({
+      'type': 'config/device_registry/list',
+    });
+    final devices = (devicesResult as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>();
+    final matches = devices.where((device) => device['id'] == deviceId);
+    if (matches.isEmpty) return null;
+    final device = matches.first;
+    return VacuumDeviceInfo(
+      manufacturer: device['manufacturer']?.toString(),
+      model: device['model']?.toString(),
+    );
   }
 
   Future<SegmentCleaningCapability?> fetchSegmentCleaningCapability() async {
@@ -1148,7 +1216,8 @@ class HomeAssistantClient {
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
         return response.bodyBytes;
       }
-    } catch (_) {
+    } catch (error, stackTrace) {
+      talker.handle(error, stackTrace, 'Could not load vacuum map image');
       // A missing or temporarily unavailable map should not prevent login.
     }
     return null;

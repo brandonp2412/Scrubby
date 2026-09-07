@@ -479,7 +479,7 @@ class _StatusColumn extends StatelessWidget {
               const SizedBox(height: 10),
               for (final speed in speeds)
                 ListTile(
-                  title: Text(speed),
+                  title: OptionLabel(value: speed, field: 'Suction power'),
                   leading: Icon(
                     speed == vacuum.fanSpeed
                         ? Icons.check_circle_rounded
@@ -833,46 +833,124 @@ class _NotificationHistory extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final records = state.notificationHistory;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Notification history',
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 12),
-        if (records.isEmpty)
-          const EmptyStatePanel(
-            icon: Icons.notifications_none_rounded,
-            title: 'No notifications yet',
-            message: 'Robot alerts will appear here.',
-          )
-        else
-          SurfaceCard(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
-            child: Column(
-              children: [
-                for (var index = 0; index < records.length; index++) ...[
-                  _NotificationRow(record: records[index]),
-                  if (index != records.length - 1) const Divider(height: 1),
-                ],
-              ],
-            ),
+    final records = state.notificationHistory.take(4).toList(growable: false);
+    return Semantics(
+      button: true,
+      label: 'Open notification history',
+      child: InkWell(
+        key: const ValueKey('notification-history-preview'),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => _NotificationHistoryPage(state: state),
           ),
-      ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Notification history',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Colors.black38,
+                    size: 22,
+                  ),
+                ],
+              ),
+            ),
+            SurfaceCard(
+              padding: EdgeInsets.zero,
+              child: records.isEmpty
+                  ? const ListTile(
+                      contentPadding: EdgeInsets.symmetric(horizontal: 18),
+                      leading: Icon(Icons.notifications_none_rounded),
+                      title: Text('No notifications yet'),
+                      subtitle: Text('Robot alerts will appear here.'),
+                    )
+                  : Column(
+                      key: const ValueKey('notification-history-preview-list'),
+                      children: [
+                        for (
+                          var index = 0;
+                          index < records.length;
+                          index++
+                        ) ...[
+                          _NotificationRow(
+                            record: records[index],
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                            ),
+                          ),
+                          if (index != records.length - 1)
+                            const Divider(height: 1),
+                        ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NotificationHistoryPage extends StatelessWidget {
+  const _NotificationHistoryPage({required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Notification history')),
+      body: ListenableBuilder(
+        listenable: state,
+        builder: (context, _) {
+          final records = state.notificationHistory;
+          if (records.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('No notifications yet.'),
+              ),
+            );
+          }
+          return ListView.separated(
+            key: const ValueKey('notification-history-full-list'),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+            itemCount: records.length,
+            itemBuilder: (context, index) => _NotificationRow(
+              record: records[index],
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+            ),
+            separatorBuilder: (_, _) => const Divider(height: 1),
+          );
+        },
+      ),
     );
   }
 }
 
 class _NotificationRow extends StatelessWidget {
-  const _NotificationRow({required this.record});
+  const _NotificationRow({
+    required this.record,
+    this.contentPadding = EdgeInsets.zero,
+  });
 
   final VacuumNotificationRecord record;
+  final EdgeInsetsGeometry contentPadding;
 
   @override
   Widget build(BuildContext context) => ListTile(
-    contentPadding: EdgeInsets.zero,
+    contentPadding: contentPadding,
     leading: Icon(
       switch (record.category) {
         DreameNotificationCategory.error => Icons.error_outline_rounded,
@@ -884,8 +962,29 @@ class _NotificationRow extends StatelessWidget {
       color: record.category == DreameNotificationCategory.error ? coral : fern,
     ),
     title: Text(record.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-    subtitle: Text(record.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+    subtitle: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(record.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 2),
+        Text(
+          _formatNotificationDateTime(context, record.createdAt),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    ),
   );
+
+  String _formatNotificationDateTime(BuildContext context, DateTime dateTime) {
+    final local = dateTime.toLocal();
+    final localizations = MaterialLocalizations.of(context);
+    final date = localizations.formatShortDate(local);
+    final time = localizations.formatTimeOfDay(
+      TimeOfDay.fromDateTime(local),
+      alwaysUse24HourFormat: MediaQuery.alwaysUse24HourFormatOf(context),
+    );
+    return '$date, $time';
+  }
 }
 
 class _RoomLabelDialog extends StatefulWidget {
@@ -950,7 +1049,7 @@ class _RoomLabelDialogState extends State<_RoomLabelDialog> {
                   enabled:
                       segment.id == widget.initialSegmentId ||
                       !widget.unavailableSegmentIds.contains(segment.id),
-                  child: Text(segment.name),
+                  child: OptionLabel(value: segment.name, field: 'Vacuum room'),
                 ),
             ],
             onChanged: (value) => setState(() => _segmentId = value),
