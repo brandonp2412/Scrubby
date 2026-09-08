@@ -775,7 +775,9 @@ class AppState extends ChangeNotifier {
       _vacuumNames.addAll(
         stored.map((key, value) => MapEntry(key, value.toString())),
       );
-    } on Object {}
+    } on Object {
+      // Corrupt local preferences should not block startup.
+    }
   }
 
   Future<void> removeMapRoomLabel(MapRoomLabel label) async {
@@ -796,7 +798,9 @@ class AppState extends ChangeNotifier {
             .map(MapRoomLabel.fromJson)
             .toList();
       }
-    } on Object {}
+    } on Object {
+      // Corrupt labels should not prevent the map from being relabelled.
+    }
   }
 
   Future<void> _persistRoomLabels() async {
