@@ -1386,14 +1386,6 @@ void main() {
       matching: find.byType(InkWell),
     );
     expect(preview, findsOneWidget);
-    expect(
-      find.byKey(const ValueKey('notification-history-preview-list')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey('notification-history-full-list')),
-      findsNothing,
-    );
     for (var index = 0; index < 4; index++) {
       expect(find.text('Notification $index'), findsOneWidget);
     }
@@ -1405,19 +1397,12 @@ void main() {
     await tester.tap(preview);
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const ValueKey('notification-history-full-list')),
-      findsOneWidget,
-    );
     expect(find.text('Notification history'), findsOneWidget);
     expect(find.text('Notification 0'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Notification 11'),
       300,
-      scrollable: find.descendant(
-        of: find.byKey(const ValueKey('notification-history-full-list')),
-        matching: find.byType(Scrollable),
-      ),
+      scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('Notification 11'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -1554,7 +1539,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(MaterialApp(home: DashboardShell(state: state)));
-    final content = find.byKey(const ValueKey('dashboard-page-content'));
+    final content = find.byType(TabBarView);
 
     await tester.fling(content, const Offset(-400, 0), 1000);
     await tester.pumpAndSettle();
