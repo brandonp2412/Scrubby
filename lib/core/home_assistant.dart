@@ -578,9 +578,7 @@ class HomeAssistantClient {
                     ? null
                     : _pendingCommands.remove(commandId);
                 if (pending != null) {
-                  if (data['success'] == true) {
-                    pending.complete(data['result']);
-                  } else {
+                  if (data['success'] != true) {
                     final error =
                         data['error'] as Map<String, dynamic>? ?? const {};
                     pending.completeError(
@@ -589,15 +587,16 @@ class HomeAssistantClient {
                             'Home Assistant rejected the request.',
                       ),
                     );
+                    return;
                   }
+                  pending.complete(data['result']);
                   return;
                 }
                 if (data['success'] != true) {
-                  if (!ready.isCompleted) {
-                    ready.completeError(
-                      Exception('Home Assistant rejected a WebSocket request.'),
-                    );
-                  }
+                  if (ready.isCompleted) return;
+                  ready.completeError(
+                    Exception('Home Assistant rejected a WebSocket request.'),
+                  );
                   return;
                 }
                 if (data['id'] == 1) {

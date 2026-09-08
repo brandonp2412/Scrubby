@@ -775,9 +775,7 @@ class AppState extends ChangeNotifier {
       _vacuumNames.addAll(
         stored.map((key, value) => MapEntry(key, value.toString())),
       );
-    } on Object {
-      // Ignore malformed local display names.
-    }
+    } on Object {}
   }
 
   Future<void> removeMapRoomLabel(MapRoomLabel label) async {
@@ -798,9 +796,7 @@ class AppState extends ChangeNotifier {
             .map(MapRoomLabel.fromJson)
             .toList();
       }
-    } on Object {
-      // Ignore malformed data and allow the user to label the map again.
-    }
+    } on Object {}
   }
 
   Future<void> _persistRoomLabels() async {
