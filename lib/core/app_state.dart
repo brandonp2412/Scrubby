@@ -1055,7 +1055,9 @@ class AppState extends ChangeNotifier {
     await _secureStorage.delete(key: _urlKey);
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _roomLabelsKey);
+    await _secureStorage.delete(key: _vacuumNamesKey);
     await _secureStorage.delete(key: _scheduleOrderKey);
+    await _secureStorage.delete(key: _notificationHistoryKey);
     await _vacuumSubscription?.cancel();
     _vacuumSubscription = null;
     await _notificationSubscription?.cancel();
@@ -1067,10 +1069,17 @@ class AppState extends ChangeNotifier {
     vacuums = [];
     selectedVacuum = 0;
     _mapRoomLabels.clear();
+    _vacuumNames.clear();
     _vacuumSegments.clear();
     _vacuumSettings.clear();
+    _vacuumDeviceInfo.clear();
     _segmentCleaningCapabilities.clear();
+    notificationHistory.clear();
+    busySettingIds.clear();
     schedules.clear();
+    busyScheduleIds.clear();
+    roomCapabilityError = null;
+    settingsError = null;
     scheduleError = null;
     savedUrl = null;
     notifyListeners();
