@@ -35,7 +35,7 @@ AppState _buildState() {
   state.vacuums = [
     VacuumEntity(
       entityId: state.vacuums[0].entityId,
-      name: state.vacuums[0].name,
+      name: 'FloorSlut',
       state: state.vacuums[0].state,
       battery: state.vacuums[0].battery,
       mapImage: base64Decode(_demoMapPng),
