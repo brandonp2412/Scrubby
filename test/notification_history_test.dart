@@ -26,7 +26,10 @@ void main() {
 
     await state.initialize();
     expect(state.notificationHistory, hasLength(1));
-    await storage.write(key: 'home_assistant_url', value: 'https://example.test');
+    await storage.write(
+      key: 'home_assistant_url',
+      value: 'https://example.test',
+    );
     await storage.write(key: 'home_assistant_token', value: 'secret');
 
     await state.logout();
