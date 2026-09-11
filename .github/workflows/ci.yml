@@ -449,10 +449,32 @@ jobs:
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true'
         run: bundle install --jobs 4 --retry 3
       - name: Publish to Google Play
+        id: publish_google_play
+        continue-on-error: true
+        timeout-minutes: 10
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true'
         env:
           SUPPLY_JSON_KEY_DATA: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
-        run: bundle exec fastlane android deploy aab:android-release/app-release.aab
+        run: |
+          bundle exec fastlane run upload_to_play_store \
+            aab:android-release/app-release.aab \
+            track:production \
+            release_status:completed \
+            skip_upload_metadata:true \
+            skip_upload_images:true \
+            skip_upload_screenshots:true \
+            skip_upload_changelogs:true
+      - name: Report deferred Google Play publish
+        if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready == 'true' && steps.publish_google_play.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "::warning::Google Play publish failed. The tested release and GitHub artifacts remain valid; Play publication can be retried after the Play-side issue is resolved."
+          {
+            echo "### Google Play publish deferred"
+            echo
+            echo "The Google Play upload failed, but this no longer marks the tested build/release pipeline as failed."
+            echo "The Play upload is intentionally AAB-only; store metadata and screenshots are handled by the separate metadata workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Defer Google Play publish while upload key activates
         if: env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' && env.ANDROID_SIGNING_READY == 'true' && steps.play_upload_key.outputs.ready != 'true'
         run: echo "::notice::Google Play publishing deferred until the reset upload certificate becomes valid."
