@@ -212,14 +212,12 @@ class DreameNotification {
     );
   }
 
-  static DreameNotification _informationNotification(
+  static DreameNotification? _informationNotification(
     String entityId,
     Map<String, dynamic> data,
   ) {
     final value = data['information']?.toString();
-    if (_eventKey(value) == 'replacetemporarymap') {
-      return _temporaryMapNotification(entityId, code: _integer(data['code']));
-    }
+    if (_eventKey(value) == 'replacetemporarymap') return null;
     return DreameNotification(
       category: DreameNotificationCategory.information,
       entityId: entityId,
@@ -228,13 +226,21 @@ class DreameNotification {
     );
   }
 
-  static DreameNotification _warningNotification(
+  static DreameNotification? _warningNotification(
     String entityId,
     Map<String, dynamic> data,
   ) {
     final value = data['warning']?.toString();
-    if (_eventKey(value) == 'replacetemporarymap') {
-      return _temporaryMapNotification(entityId, code: _integer(data['code']));
+    if (_eventKey(value) == 'replacetemporarymap') return null;
+    final mapWarning = _mapWarning(value);
+    if (mapWarning != null) {
+      return DreameNotification(
+        category: DreameNotificationCategory.warning,
+        entityId: entityId,
+        title: mapWarning.$1,
+        body: mapWarning.$2,
+        code: _integer(data['code']),
+      );
     }
     return DreameNotification(
       category: DreameNotificationCategory.warning,
@@ -245,17 +251,24 @@ class DreameNotification {
     );
   }
 
-  static DreameNotification _temporaryMapNotification(
-    String entityId, {
-    int? code,
-  }) => DreameNotification(
-    category: DreameNotificationCategory.information,
-    entityId: entityId,
-    title: 'Map needs attention',
-    body:
-        'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
-    code: code,
-  );
+  static (String, String)? _mapWarning(String? value) {
+    final normalized = (value ?? '')
+        .replaceAll(RegExp(r'[#*_`]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim()
+        .toLowerCase();
+    if (!normalized.contains('a new map has been generated')) return null;
+    if (normalized.contains('upper limit')) {
+      return (
+        'Map storage full',
+        'The robot created a new map, but the saved-map limit is full. Replace an existing map or discard the new one.',
+      );
+    }
+    return (
+      'New map created',
+      'The robot created a new map. Save it or discard it before cleaning.',
+    );
+  }
 
   static String _consumableMessage(String? value) => switch (_eventKey(value)) {
     'mainbrush' => 'Replace the main brush and reset its counter.',
@@ -276,8 +289,6 @@ class DreameNotification {
       'Auto-empty was not performed during the do-not-disturb period.',
     'cleaningpaused' =>
       'Cleaning is paused because the battery is low and will resume after charging.',
-    'replacetemporarymap' =>
-      'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
     _ => _eventDescription(value, fallback: 'Robot information'),
   };
 
@@ -285,8 +296,6 @@ class DreameNotification {
     final raw = value?.trim();
     if (raw == null || raw.isEmpty) return fallback;
     return switch (_eventKey(raw)) {
-      'replacetemporarymap' =>
-        'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
       'dustcollection' =>
         'Auto-empty was not performed during the do-not-disturb period.',
       'cleaningpaused' =>

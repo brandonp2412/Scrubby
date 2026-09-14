@@ -25,8 +25,7 @@ const _androidNotificationIcon = 'ic_bg_service_small';
 const _notificationHistoryKey = 'notification_history';
 
 Duration notificationDuplicateWindow(DreameNotification notification) =>
-    notification.category == DreameNotificationCategory.consumable ||
-        notification.title == 'Map needs attention'
+    notification.category == DreameNotificationCategory.consumable
     ? const Duration(hours: 24)
     : const Duration(minutes: 2);
 
