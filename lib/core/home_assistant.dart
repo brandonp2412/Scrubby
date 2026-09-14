@@ -169,24 +169,16 @@ class DreameNotification {
         title: 'Maintenance needed',
         body: _consumableMessage(data['consumable']?.toString()),
       ),
-      'information' => DreameNotification(
-        category: DreameNotificationCategory.information,
-        entityId: entityId,
-        title: 'Robot information',
-        body: _informationMessage(data['information']?.toString()),
-      ),
-      'warning' => DreameNotification(
-        category: DreameNotificationCategory.warning,
-        entityId: entityId,
-        title: 'Robot warning',
-        body: _humanize(data['warning']?.toString() ?? 'Attention required'),
-        code: _integer(data['code']),
-      ),
+      'information' => _informationNotification(entityId, data),
+      'warning' => _warningNotification(entityId, data),
       'error' => DreameNotification(
         category: DreameNotificationCategory.error,
         entityId: entityId,
         title: 'Robot error',
-        body: _humanize(data['error']?.toString() ?? 'Robot error'),
+        body: _eventDescription(
+          data['error']?.toString(),
+          fallback: 'Robot error',
+        ),
         code: _integer(data['code']),
       ),
       _ => null,
@@ -220,27 +212,91 @@ class DreameNotification {
     );
   }
 
-  static String _consumableMessage(String? value) => switch (value) {
-    'main_brush' => 'Replace the main brush and reset its counter.',
-    'side_brush' => 'Replace the side brush and reset its counter.',
+  static DreameNotification _informationNotification(
+    String entityId,
+    Map<String, dynamic> data,
+  ) {
+    final value = data['information']?.toString();
+    if (_eventKey(value) == 'replacetemporarymap') {
+      return _temporaryMapNotification(entityId, code: _integer(data['code']));
+    }
+    return DreameNotification(
+      category: DreameNotificationCategory.information,
+      entityId: entityId,
+      title: 'Robot information',
+      body: _informationMessage(value),
+    );
+  }
+
+  static DreameNotification _warningNotification(
+    String entityId,
+    Map<String, dynamic> data,
+  ) {
+    final value = data['warning']?.toString();
+    if (_eventKey(value) == 'replacetemporarymap') {
+      return _temporaryMapNotification(entityId, code: _integer(data['code']));
+    }
+    return DreameNotification(
+      category: DreameNotificationCategory.warning,
+      entityId: entityId,
+      title: 'Robot warning',
+      body: _eventDescription(value, fallback: 'Attention required'),
+      code: _integer(data['code']),
+    );
+  }
+
+  static DreameNotification _temporaryMapNotification(
+    String entityId, {
+    int? code,
+  }) => DreameNotification(
+    category: DreameNotificationCategory.information,
+    entityId: entityId,
+    title: 'Map needs attention',
+    body:
+        'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
+    code: code,
+  );
+
+  static String _consumableMessage(String? value) => switch (_eventKey(value)) {
+    'mainbrush' => 'Replace the main brush and reset its counter.',
+    'sidebrush' => 'Replace the side brush and reset its counter.',
     'filter' ||
-    'secondary_filter' => 'Replace the filter and reset its counter.',
+    'secondaryfilter' => 'Replace the filter and reset its counter.',
     'sensor' => 'Clean the sensors and reset their counter.',
-    'mop_pad' => 'Replace the mop pad and reset its counter.',
-    'silver_ion' => 'Replace the silver-ion sterilizer and reset its counter.',
+    'moppad' => 'Replace the mop pad and reset its counter.',
+    'silverion' => 'Replace the silver-ion sterilizer and reset its counter.',
     'detergent' => 'Check and replace the floor-cleaning solution.',
-    _ => _humanize(value ?? 'A consumable needs attention'),
+    _ => _eventDescription(value, fallback: 'A consumable needs attention'),
   };
 
-  static String _informationMessage(String? value) => switch (value) {
-    'dust_collection' =>
+  static String _informationMessage(String? value) => switch (_eventKey(
+    value,
+  )) {
+    'dustcollection' =>
       'Auto-empty was not performed during the do-not-disturb period.',
-    'cleaning_paused' =>
-      'Cleaning is paused and will resume after charging or do-not-disturb.',
-    'replace_temporary_map' || 'replaceTemporaryMap' =>
-      'The temporary map was replaced with the saved map.',
-    _ => _humanize(value ?? 'Robot information'),
+    'cleaningpaused' =>
+      'Cleaning is paused because the battery is low and will resume after charging.',
+    'replacetemporarymap' =>
+      'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
+    _ => _eventDescription(value, fallback: 'Robot information'),
   };
+
+  static String _eventDescription(String? value, {required String fallback}) {
+    final raw = value?.trim();
+    if (raw == null || raw.isEmpty) return fallback;
+    return switch (_eventKey(raw)) {
+      'replacetemporarymap' =>
+        'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
+      'dustcollection' =>
+        'Auto-empty was not performed during the do-not-disturb period.',
+      'cleaningpaused' =>
+        'Cleaning is paused because the battery is low and will resume after charging.',
+      _ => _humanize(raw),
+    };
+  }
+
+  static String _eventKey(String? value) =>
+      (value ?? '').toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
 
   static String _humanize(String value) {
     final withoutMarkdown = value

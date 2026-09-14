@@ -24,8 +24,9 @@ const _backgroundNotificationId = 5100;
 const _androidNotificationIcon = 'ic_bg_service_small';
 const _notificationHistoryKey = 'notification_history';
 
-Duration notificationDuplicateWindow(DreameNotificationCategory category) =>
-    category == DreameNotificationCategory.consumable
+Duration notificationDuplicateWindow(DreameNotification notification) =>
+    notification.category == DreameNotificationCategory.consumable ||
+        notification.title == 'Map needs attention'
     ? const Duration(hours: 24)
     : const Duration(minutes: 2);
 
@@ -45,7 +46,7 @@ bool isDuplicateVacuumNotification(
     return false;
   }
   return (now ?? DateTime.now()).difference(createdAt).abs() <
-      notificationDuplicateWindow(notification.category);
+      notificationDuplicateWindow(notification);
 }
 
 bool get _supportsAndroidService =>

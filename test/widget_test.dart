@@ -460,8 +460,8 @@ void main() {
       contains('main brush'),
     );
     expect(
-      parse('information', {'information': 'dust_collection'}).category,
-      DreameNotificationCategory.information,
+      parse('information', {'information': 'dust_collection'}).body,
+      'Auto-empty was not performed during the do-not-disturb period.',
     );
     expect(
       parse('warning', {'warning': 'Clean water tank', 'code': 12}).code,
@@ -473,12 +473,72 @@ void main() {
     );
   });
 
+  test('maps temporary-map event tokens to a readable map notification', () {
+    DreameNotification parse(String type, String value) =>
+        DreameNotification.fromHomeAssistantEvent({
+          'event_type': 'dreame_vacuum_$type',
+          'data': {'entity_id': 'vacuum.dreame', type: value},
+        })!;
+
+    for (final value in const [
+      'replacetemporarymap',
+      'replaceTemporaryMap',
+      'replace_temporary_map',
+    ]) {
+      final notification = parse('warning', value);
+      expect(notification.category, DreameNotificationCategory.information);
+      expect(notification.title, 'Map needs attention');
+      expect(notification.body, contains('temporary map'));
+      expect(notification.body, isNot(contains(value)));
+    }
+
+    final information = parse('information', 'replaceTemporaryMap');
+    expect(information.title, 'Map needs attention');
+    expect(information.body, contains('Save it, discard it, or replace'));
+  });
+
   test('suppresses repeated consumable reminders for 24 hours', () {
     const notification = DreameNotification(
       category: DreameNotificationCategory.consumable,
       entityId: 'vacuum.dreame',
       title: 'Maintenance needed',
       body: 'Clean the sensors and reset their counter.',
+    );
+    final now = DateTime(2026, 9, 1, 20);
+
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(hours: 23)),
+        now: now,
+      ),
+      isTrue,
+    );
+    expect(
+      isDuplicateVacuumNotification(
+        notification,
+        entityId: notification.entityId,
+        category: notification.category,
+        title: notification.title,
+        body: notification.body,
+        createdAt: now.subtract(const Duration(hours: 25)),
+        now: now,
+      ),
+      isFalse,
+    );
+  });
+
+  test('suppresses repeated temporary-map reminders for 24 hours', () {
+    const notification = DreameNotification(
+      category: DreameNotificationCategory.information,
+      entityId: 'vacuum.dreame',
+      title: 'Map needs attention',
+      body:
+          'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
     );
     final now = DateTime(2026, 9, 1, 20);
 
