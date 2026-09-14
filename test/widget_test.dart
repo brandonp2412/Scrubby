@@ -519,6 +519,54 @@ void main() {
     );
   });
 
+  test(
+    'migrates obsolete temporary-map clear notifications from history',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'notification_history': jsonEncode([
+          {
+            'category': 'warning',
+            'entity_id': 'vacuum.dreame',
+            'title': 'Robot warning',
+            'body': 'Replacetemporarymap',
+            'created_at': '2026-09-13T13:25:08.000',
+          },
+          {
+            'category': 'information',
+            'entity_id': 'vacuum.dreame',
+            'title': 'Map needs attention',
+            'body':
+                'A new temporary map is ready. Save it, discard it, or replace an existing saved map.',
+            'created_at': '2026-09-13T13:25:09.000',
+          },
+          {
+            'category': 'warning',
+            'entity_id': 'vacuum.dreame',
+            'title': 'Robot warning',
+            'body': 'Clean water tank',
+            'created_at': '2026-09-13T13:25:10.000',
+          },
+        ]),
+      });
+
+      final state = AppState();
+      await state.initialize();
+
+      expect(state.notificationHistory, hasLength(1));
+      expect(state.notificationHistory.single.body, 'Clean water tank');
+
+      const storage = FlutterSecureStorage();
+      final migrated =
+          jsonDecode((await storage.read(key: 'notification_history'))!)
+              as List<dynamic>;
+      expect(migrated, hasLength(1));
+      expect(
+        (migrated.single as Map<String, dynamic>)['body'],
+        'Clean water tank',
+      );
+    },
+  );
+
   test('suppresses repeated consumable reminders for 24 hours', () {
     const notification = DreameNotification(
       category: DreameNotificationCategory.consumable,

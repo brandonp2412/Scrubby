@@ -125,6 +125,17 @@ class VacuumNotificationRecord {
       ? null
       : [category.name, entityId, title, body].join('\u0000');
 
+  bool get isObsoleteTemporaryMapClear {
+    final normalizedBody = body.toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '',
+    );
+    if (normalizedBody == 'replacetemporarymap') return true;
+    return title.toLowerCase() == 'map needs attention' &&
+        normalizedBody.contains('anewtemporarymapisready') &&
+        normalizedBody.contains('saveitdiscarditorreplace');
+  }
+
   Map<String, Object> toJson() => {
     'category': category.name,
     'entity_id': entityId,
@@ -252,7 +263,7 @@ class AppState extends ChangeNotifier {
       final token = credentials[_tokenKey];
       _restoreRoomLabels(credentials[_roomLabelsKey]);
       _restoreVacuumNames(credentials[_vacuumNamesKey]);
-      _restoreNotificationHistory(credentials[_notificationHistoryKey]);
+      await _restoreNotificationHistory(credentials[_notificationHistoryKey]);
       if (savedUrl != null && token != null) {
         await login(savedUrl!, token, persist: false);
       }
@@ -371,14 +382,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _restoreNotificationHistory(String? encoded) {
+  Future<void> _restoreNotificationHistory(String? encoded) async {
     if (encoded == null || encoded.isEmpty) return;
     try {
       final saved = jsonDecode(encoded) as List<dynamic>;
       final restored = <VacuumNotificationRecord>[];
+      var removedObsoleteMapClear = false;
       for (final record in saved.whereType<Map<String, dynamic>>().map(
         VacuumNotificationRecord.fromJson,
       )) {
+        if (record.isObsoleteTemporaryMapClear) {
+          removedObsoleteMapClear = true;
+          continue;
+        }
         final notification = DreameNotification(
           category: record.category,
           entityId: record.entityId,
@@ -402,6 +418,17 @@ class AppState extends ChangeNotifier {
       notificationHistory
         ..clear()
         ..addAll(restored);
+      if (removedObsoleteMapClear) {
+        try {
+          await _persistNotificationHistory();
+        } catch (error, stackTrace) {
+          talker.handle(
+            error,
+            stackTrace,
+            'Could not persist migrated notification history',
+          );
+        }
+      }
     } catch (error, stackTrace) {
       talker.handle(
         error,
@@ -420,7 +447,7 @@ class AppState extends ChangeNotifier {
   );
 
   Future<void> _reloadNotificationHistory() async {
-    _restoreNotificationHistory(
+    await _restoreNotificationHistory(
       await _secureStorage.read(key: _notificationHistoryKey),
     );
     notifyListeners();
