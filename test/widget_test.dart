@@ -1391,6 +1391,42 @@ void main() {
     },
   );
 
+  testWidgets(
+    'transient Home Assistant reconnect does not show an error toast',
+    (WidgetTester tester) async {
+      final state = AppState()
+        ..vacuums = const [
+          VacuumEntity(
+            entityId: 'vacuum.test',
+            name: 'Test Vacuum',
+            state: 'docked',
+            battery: 90,
+          ),
+        ];
+      addTearDown(state.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ListenableBuilder(
+            listenable: state,
+            builder: (context, _) => DashboardShell(state: state),
+          ),
+        ),
+      );
+
+      state.connectionStatus = HomeAssistantConnectionStatus.reconnecting;
+      state.notifyListeners();
+      await tester.pump();
+
+      expect(find.text('Connection error. Trying to reconnect.'), findsNothing);
+
+      state.connectionStatus = HomeAssistantConnectionStatus.offline;
+      state.notifyListeners();
+      await tester.pump();
+      expect(find.text('Offline'), findsOneWidget);
+    },
+  );
+
   testWidgets('mobile dashboard controls open and labels stay on one line', (
     WidgetTester tester,
   ) async {

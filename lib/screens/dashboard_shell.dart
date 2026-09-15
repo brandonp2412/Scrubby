@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
-import '../core/home_assistant.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 import 'home_page.dart';
@@ -21,7 +20,6 @@ class DashboardShell extends StatefulWidget {
 
 class _DashboardShellState extends State<DashboardShell>
     with SingleTickerProviderStateMixin {
-  HomeAssistantConnectionStatus? _lastConnectionStatus;
   late final TabController _tabController;
   late final Animation<double> _tabAnimation;
   int _lastCommittedTabIndex = 0;
@@ -32,41 +30,14 @@ class _DashboardShellState extends State<DashboardShell>
     _tabController = TabController(length: 3, vsync: this)
       ..addListener(_handleTabChanged);
     _tabAnimation = _tabController.animation!;
-    _lastConnectionStatus = widget.state.connectionStatus;
-    widget.state.addListener(_handleStateChanged);
-  }
-
-  @override
-  void didUpdateWidget(covariant DashboardShell oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.state != widget.state) {
-      oldWidget.state.removeListener(_handleStateChanged);
-      _lastConnectionStatus = widget.state.connectionStatus;
-      widget.state.addListener(_handleStateChanged);
-    }
   }
 
   @override
   void dispose() {
-    widget.state.removeListener(_handleStateChanged);
     _tabController
       ..removeListener(_handleTabChanged)
       ..dispose();
     super.dispose();
-  }
-
-  void _handleStateChanged() {
-    final status = widget.state.connectionStatus;
-    final wasConnected =
-        _lastConnectionStatus == HomeAssistantConnectionStatus.connected;
-    _lastConnectionStatus = status;
-    if (wasConnected &&
-        status == HomeAssistantConnectionStatus.reconnecting &&
-        mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connection error. Trying to reconnect.')),
-      );
-    }
   }
 
   void _selectPage(int value) {
