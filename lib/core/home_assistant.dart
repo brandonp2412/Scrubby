@@ -504,6 +504,8 @@ class HomeAssistantClient {
   final _connectionUpdates =
       StreamController<HomeAssistantConnectionStatus>.broadcast();
   final Map<String, Map<String, dynamic>> _states = {};
+  final Map<String, num> _lastPositiveCleanedArea = {};
+  final Map<String, num> _lastPositiveCleaningTime = {};
   final Map<String, Uint8List> _mapImages = {};
   final Map<String, String> _mapEntityIds = {};
   final Map<String, Timer> _mapRefreshTimers = {};
@@ -741,11 +743,15 @@ class HomeAssistantClient {
         if (entityId != null) _states[entityId] = item;
       }
     }
+    for (final state in _states.values) {
+      _rememberCleaningMetric(state);
+    }
   }
 
   void _handleEvent(Map<String, dynamic> message) {
-    final event = message['event'] as Map<String, dynamic>?;
-    if (event == null) return;
+    final rawEvent = message['event'] as Map<String, dynamic>?;
+    if (rawEvent == null) return;
+    final event = _repairTaskMetrics(rawEvent);
     final notification = DreameNotification.fromHomeAssistantEvent(event);
     if (notification != null) {
       talker.debug(
@@ -760,8 +766,10 @@ class HomeAssistantClient {
     if (entityId == null) return;
     final oldState = _states[entityId];
     final newState = data?['new_state'];
+    if (oldState != null) _rememberCleaningMetric(oldState);
     if (newState is Map<String, dynamic>) {
       _states[entityId] = newState;
+      _rememberCleaningMetric(newState);
     } else {
       _states.remove(entityId);
     }
@@ -773,6 +781,80 @@ class HomeAssistantClient {
     if (entityId.startsWith('camera.') || entityId.startsWith('image.')) {
       _scheduleAffectedMapRefreshes(entityId);
     }
+  }
+
+  Map<String, dynamic> _repairTaskMetrics(Map<String, dynamic> event) {
+    if (event['event_type'] != 'dreame_vacuum_task_status') return event;
+    final data = event['data'];
+    if (data is! Map<String, dynamic>) return event;
+    final entityId = data['entity_id']?.toString();
+    if (entityId == null || entityId.isEmpty) return event;
+
+    if (data['completed'] != true) {
+      _lastPositiveCleanedArea.remove(entityId);
+      _lastPositiveCleaningTime.remove(entityId);
+      return event;
+    }
+
+    final repaired = Map<String, dynamic>.from(data);
+    var changed = false;
+    if (!_isPositiveMetric(repaired['cleaned_area'])) {
+      final area = _lastPositiveCleanedArea[entityId];
+      if (area != null) {
+        repaired['cleaned_area'] = area;
+        changed = true;
+      }
+    }
+    if (!_isPositiveMetric(repaired['cleaning_time'])) {
+      final minutes = _lastPositiveCleaningTime[entityId];
+      if (minutes != null) {
+        repaired['cleaning_time'] = minutes;
+        changed = true;
+      }
+    }
+    return changed ? {...event, 'data': repaired} : event;
+  }
+
+  void _rememberCleaningMetric(Map<String, dynamic> state) {
+    final sensorId = state['entity_id']?.toString();
+    if (sensorId == null || !sensorId.startsWith('sensor.')) return;
+    final value = _positiveMetric(state['state']);
+    if (value == null) return;
+
+    const areaSuffix = '_cleaned_area';
+    const timeSuffix = '_cleaning_time';
+    if (sensorId.endsWith(areaSuffix)) {
+      final vacuumId = _vacuumIdForMetricSensor(sensorId, areaSuffix);
+      if (vacuumId != null) _lastPositiveCleanedArea[vacuumId] = value;
+    } else if (sensorId.endsWith(timeSuffix)) {
+      final vacuumId = _vacuumIdForMetricSensor(sensorId, timeSuffix);
+      if (vacuumId != null) _lastPositiveCleaningTime[vacuumId] = value;
+    }
+  }
+
+  String? _vacuumIdForMetricSensor(String sensorId, String suffix) {
+    final objectId = sensorId.substring('sensor.'.length);
+    final vacuumObjectId = objectId.substring(
+      0,
+      objectId.length - suffix.length,
+    );
+    final exact = 'vacuum.$vacuumObjectId';
+    if (_states.containsKey(exact)) return exact;
+
+    final vacuumIds = _states.keys
+        .where((entityId) => entityId.startsWith('vacuum.'))
+        .toList(growable: false);
+    return vacuumIds.length == 1 ? vacuumIds.single : null;
+  }
+
+  bool _isPositiveMetric(Object? value) => _positiveMetric(value) != null;
+
+  num? _positiveMetric(Object? value) {
+    final number = value is num
+        ? value
+        : num.tryParse(value?.toString().trim() ?? '');
+    if (number == null || number <= 0) return null;
+    return number;
   }
 
   bool _isBatteryState(Object? state) {

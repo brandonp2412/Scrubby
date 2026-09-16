@@ -1222,6 +1222,99 @@ void main() {
     },
   );
 
+  test('uses the last positive cleaning metrics when Dreame resets completion values', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    var completionSent = false;
+    server.listen((request) async {
+      final socket = await WebSocketTransformer.upgrade(request);
+      socket.add(jsonEncode({'type': 'auth_required'}));
+      socket.listen((rawMessage) {
+        final message =
+            jsonDecode(rawMessage as String) as Map<String, dynamic>;
+        switch (message['type']) {
+          case 'auth':
+            socket.add(
+              jsonEncode({'type': 'auth_ok', 'ha_version': '2026.9.0'}),
+            );
+          case 'get_config':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': {'location_name': 'Test Home'},
+              }),
+            );
+          case 'get_states':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': [
+                  {
+                    'entity_id': 'vacuum.floorslut',
+                    'state': 'returning',
+                    'attributes': {'friendly_name': 'FloorSlut'},
+                  },
+                  {
+                    'entity_id': 'sensor.floorslut_cleaned_area',
+                    'state': '61',
+                    'attributes': {'unit_of_measurement': 'm²'},
+                  },
+                  {
+                    'entity_id': 'sensor.floorslut_cleaning_time',
+                    'state': '98',
+                    'attributes': {'unit_of_measurement': 'min'},
+                  },
+                ],
+              }),
+            );
+          case 'subscribe_events':
+            socket.add(
+              jsonEncode({
+                'id': message['id'],
+                'type': 'result',
+                'success': true,
+                'result': null,
+              }),
+            );
+            if (!completionSent &&
+                message['event_type'] == 'dreame_vacuum_task_status') {
+              completionSent = true;
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'event',
+                  'event': {
+                    'event_type': 'dreame_vacuum_task_status',
+                    'data': {
+                      'entity_id': 'vacuum.floorslut',
+                      'status': 'docked',
+                      'completed': true,
+                      'cleaned_area': 0,
+                      'cleaning_time': 0,
+                    },
+                  },
+                }),
+              );
+            }
+        }
+      });
+    });
+
+    final client = HomeAssistantClient(
+      'http://${server.address.address}:${server.port}',
+      'test-token',
+    );
+    addTearDown(client.close);
+    final notification = client.notificationUpdates.first;
+    await client.connect();
+
+    expect((await notification).body, '61 m² · 98 min');
+  });
+
   test('reconnects when an open WebSocket stops responding', () async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     addTearDown(() => server.close(force: true));
