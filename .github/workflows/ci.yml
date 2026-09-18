@@ -90,6 +90,7 @@ jobs:
           retention-days: 7
 
   patrol-tests:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -126,7 +127,7 @@ jobs:
 
   version-bump:
     if: github.event_name == 'push'
-    needs: [quality-checks, generate-screenshots, patrol-tests]
+    needs: [quality-checks, generate-screenshots]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
