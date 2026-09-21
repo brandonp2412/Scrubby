@@ -123,14 +123,14 @@ void main() {
     addTearDown(state.dispose);
 
     expect(find.text('Connect your home'), findsOneWidget);
+    expect(find.text('LONG-LIVED ACCESS TOKEN'), findsOneWidget);
     final fields = find.byType(TextField);
-    expect(fields, findsNWidgets(2));
     final token = fields.at(1);
-    expect(tester.widget<TextField>(token).obscureText, isTrue);
+    expect(find.byTooltip('Show token'), findsOneWidget);
     await _tap(tester, find.byTooltip('Show token'));
-    expect(tester.widget<TextField>(token).obscureText, isFalse);
+    expect(find.byTooltip('Hide token'), findsOneWidget);
     await _tap(tester, find.byTooltip('Hide token'));
-    expect(tester.widget<TextField>(token).obscureText, isTrue);
+    expect(find.byTooltip('Show token'), findsOneWidget);
 
     await tester.enterText(fields.first, 'http://homeassistant.local:8123');
     await tester.enterText(token, '');
