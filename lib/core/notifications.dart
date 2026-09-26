@@ -6,6 +6,10 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'runtime_platform_stub.dart'
+    if (dart.library.io) 'runtime_platform_io.dart'
+    as runtime_platform;
+
 import 'home_assistant.dart';
 import '../logging.dart';
 
@@ -48,8 +52,7 @@ bool isDuplicateVacuumNotification(
       notificationDuplicateWindow(notification);
 }
 
-bool get _supportsAndroidService =>
-    !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+bool get _supportsAndroidService => !kIsWeb && runtime_platform.isAndroidHost;
 
 Future<void> configureBackgroundNotificationService() async {
   if (!_supportsAndroidService) return;
