@@ -77,6 +77,9 @@ Future<void> _takeScreenshot({
   required String screenshotName,
 }) async {
   await tester.pumpAndSettle();
+  final supportsScreenshot =
+      kIsWeb || defaultTargetPlatform == TargetPlatform.android;
+  if (!supportsScreenshot) return;
   if (!kIsWeb) await binding.convertFlutterSurfaceToImage();
   await tester.pumpAndSettle();
   await tester.pump(const Duration(milliseconds: 300));
