@@ -477,7 +477,8 @@ class HomeAssistantClient {
     String url,
     this.token, {
     http.Client? httpClient,
-    this.heartbeatInterval = const Duration(seconds: 30),
+    this.notificationOnly = false,
+    this.heartbeatInterval = const Duration(minutes: 2),
     this.heartbeatTimeout = const Duration(seconds: 15),
     this.connectionTimeout = const Duration(seconds: 12),
     this.reconnectDelays = const [
@@ -485,6 +486,8 @@ class HomeAssistantClient {
       Duration(seconds: 10),
       Duration(seconds: 30),
       Duration(minutes: 1),
+      Duration(minutes: 5),
+      Duration(minutes: 15),
     ],
   }) : assert(reconnectDelays.isNotEmpty),
        baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
@@ -493,6 +496,7 @@ class HomeAssistantClient {
 
   final String baseUrl;
   final String token;
+  final bool notificationOnly;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
   final Duration heartbeatInterval;
@@ -518,6 +522,7 @@ class HomeAssistantClient {
   Timer? _heartbeatTimeoutTimer;
   int? _heartbeatCommandId;
   bool _closed = false;
+  bool _suspended = false;
   bool _isConnecting = false;
   int _connectionGeneration = 0;
   int _reconnectAttempts = 0;
@@ -591,16 +596,27 @@ class HomeAssistantClient {
   }
 
   Future<void> _openSocket({required bool isInitialConnection}) async {
-    if (_closed || _isConnecting) return;
+    if (_closed || _suspended || _isConnecting) return;
     _isConnecting = true;
     _reconnectTimer?.cancel();
     final generation = ++_connectionGeneration;
     final ready = Completer<void>();
     var hasConfig = false;
     var hasStates = false;
+    var notificationSubscriptions = 0;
+    var metricSubscriptionReady = !notificationOnly;
 
     void completeWhenReady() {
-      if (hasConfig && hasStates && !ready.isCompleted) ready.complete();
+      final dashboardReady = !notificationOnly && hasConfig && hasStates;
+      final notificationsReady =
+          notificationOnly &&
+          hasStates &&
+          metricSubscriptionReady &&
+          notificationSubscriptions ==
+              DreameNotification.supportedEventTypes.length;
+      if ((dashboardReady || notificationsReady) && !ready.isCompleted) {
+        ready.complete();
+      }
     }
 
     try {
@@ -618,16 +634,20 @@ class HomeAssistantClient {
                   jsonEncode({'type': 'auth', 'access_token': token}),
                 );
               case 'auth_ok':
-                channel.sink.add(jsonEncode({'id': 1, 'type': 'get_config'}));
-                channel.sink.add(jsonEncode({'id': 2, 'type': 'get_states'}));
-                final eventTypes = <String>[
-                  'state_changed',
+                if (!notificationOnly) {
+                  channel.sink.add(jsonEncode({'id': 1, 'type': 'get_config'}));
+                  channel.sink.add(jsonEncode({'id': 2, 'type': 'get_states'}));
+                } else {
+                  channel.sink.add(jsonEncode({'id': 1, 'type': 'get_states'}));
+                }
+                final eventTypes = [
+                  if (!notificationOnly) 'state_changed',
                   ...DreameNotification.supportedEventTypes,
                 ];
                 for (var index = 0; index < eventTypes.length; index++) {
                   channel.sink.add(
                     jsonEncode({
-                      'id': index + 3,
+                      'id': index + (notificationOnly ? 2 : 3),
                       'type': 'subscribe_events',
                       'event_type': eventTypes[index],
                     }),
@@ -666,6 +686,37 @@ class HomeAssistantClient {
                   );
                   return;
                 }
+                if (notificationOnly) {
+                  final commandId = data['id'] as int?;
+                  if (commandId == 1) {
+                    final states = data['result'] as List<dynamic>? ?? const [];
+                    _replaceNotificationStates(states);
+                    hasStates = true;
+                    final metricIds = _states.keys
+                        .where(_isCleaningMetricEntityId)
+                        .toList(growable: false);
+                    if (metricIds.isEmpty) {
+                      metricSubscriptionReady = true;
+                    } else {
+                      channel.sink.add(
+                        jsonEncode({
+                          'id': 7,
+                          'type': 'subscribe_trigger',
+                          'trigger': {
+                            'platform': 'state',
+                            'entity_id': metricIds,
+                          },
+                        }),
+                      );
+                    }
+                  } else if (commandId == 7) {
+                    metricSubscriptionReady = true;
+                  } else {
+                    notificationSubscriptions++;
+                  }
+                  completeWhenReady();
+                  return;
+                }
                 if (data['id'] == 1) {
                   final result = data['result'] as Map<String, dynamic>? ?? {};
                   _locationName = result['location_name'] as String? ?? 'Home';
@@ -682,7 +733,19 @@ class HomeAssistantClient {
                   }
                 }
               case 'event':
-                _handleEvent(data);
+                if (notificationOnly && data['id'] == 7) {
+                  final trigger = data['event'] as Map<String, dynamic>?;
+                  final variables =
+                      trigger?['variables'] as Map<String, dynamic>?;
+                  final details =
+                      variables?['trigger'] as Map<String, dynamic>?;
+                  final state = details?['to_state'];
+                  if (state is Map<String, dynamic>) {
+                    _rememberCleaningMetric(state);
+                  }
+                } else {
+                  _handleEvent(data);
+                }
               case 'pong':
                 if (data['id'] == _heartbeatCommandId) {
                   _heartbeatTimeoutTimer?.cancel();
@@ -747,6 +810,26 @@ class HomeAssistantClient {
       _rememberCleaningMetric(state);
     }
   }
+
+  void _replaceNotificationStates(List<dynamic> states) {
+    _states.clear();
+    for (final item in states) {
+      if (item is! Map<String, dynamic>) continue;
+      final entityId = item['entity_id'] as String?;
+      if (entityId == null ||
+          (!entityId.startsWith('vacuum.') &&
+              !_isCleaningMetricEntityId(entityId))) {
+        continue;
+      }
+      _states[entityId] = item;
+      _rememberCleaningMetric(item);
+    }
+  }
+
+  bool _isCleaningMetricEntityId(String entityId) =>
+      entityId.startsWith('sensor.') &&
+      (entityId.endsWith('_cleaned_area') ||
+          entityId.endsWith('_cleaning_time'));
 
   void _handleEvent(Map<String, dynamic> message) {
     final rawEvent = message['event'] as Map<String, dynamic>?;
@@ -943,7 +1026,7 @@ class HomeAssistantClient {
   }
 
   void _handleDisconnect(int generation) {
-    if (_closed || generation != _connectionGeneration) return;
+    if (_closed || _suspended || generation != _connectionGeneration) return;
     _connectionGeneration++;
     _stopHeartbeat();
     final subscription = _socketSubscription;
@@ -989,7 +1072,7 @@ class HomeAssistantClient {
   }
 
   void _scheduleReconnect() {
-    if (_closed || _reconnectTimer?.isActive == true) return;
+    if (_closed || _suspended || _reconnectTimer?.isActive == true) return;
     _reconnectAttempts++;
     _setConnectionStatus(
       _reconnectAttempts >= 3
@@ -1032,6 +1115,32 @@ class HomeAssistantClient {
     await _notificationUpdates.close();
     await _connectionUpdates.close();
     if (_ownsHttpClient) _httpClient.close();
+  }
+
+  /// Temporarily releases the socket while preserving streams and cached UI
+  /// state so the same client can reconnect when the app becomes visible.
+  Future<void> suspend() async {
+    if (_closed || _suspended) return;
+    _suspended = true;
+    _reconnectTimer?.cancel();
+    _stopHeartbeat();
+    _connectionGeneration++;
+    final subscription = _socketSubscription;
+    final channel = _channel;
+    _socketSubscription = null;
+    _channel = null;
+    await subscription?.cancel();
+    await channel?.sink.close();
+    _failPendingCommands(Exception('The Home Assistant connection suspended.'));
+    talker.info('Suspended Home Assistant connection');
+  }
+
+  Future<void> resume() async {
+    if (_closed || !_suspended) return;
+    _suspended = false;
+    _reconnectAttempts = 0;
+    await _openSocket(isInitialConnection: false);
+    talker.info('Resumed Home Assistant connection');
   }
 
   void _failPendingCommands(Object error) {

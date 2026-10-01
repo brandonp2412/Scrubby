@@ -1402,6 +1402,132 @@ void main() {
   });
 
   test(
+    'notification-only client subscribes without loading dashboard data',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      final commands = <Map<String, dynamic>>[];
+
+      server.listen((request) async {
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.add(jsonEncode({'type': 'auth_required'}));
+        socket.listen((rawMessage) {
+          final message =
+              jsonDecode(rawMessage as String) as Map<String, dynamic>;
+          commands.add(message);
+          switch (message['type']) {
+            case 'auth':
+              socket.add(jsonEncode({'type': 'auth_ok'}));
+            case 'subscribe_events':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': null,
+                }),
+              );
+            case 'get_states':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': const [],
+                }),
+              );
+          }
+        });
+      });
+
+      final client = HomeAssistantClient(
+        'http://${server.address.address}:${server.port}',
+        'test-token',
+        notificationOnly: true,
+      );
+      addTearDown(client.close);
+      await client.connect();
+
+      expect(
+        commands.where((item) => item['type'] == 'get_states'),
+        hasLength(1),
+      );
+      expect(commands.where((item) => item['type'] == 'get_config'), isEmpty);
+      final eventTypes = commands
+          .where((item) => item['type'] == 'subscribe_events')
+          .map((item) => item['event_type'])
+          .toSet();
+      expect(eventTypes, DreameNotification.supportedEventTypes.toSet());
+      expect(eventTypes, isNot(contains('state_changed')));
+    },
+  );
+
+  test(
+    'suspending a client closes its socket and resume opens one socket',
+    () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      var connections = 0;
+      var closedConnections = 0;
+
+      server.listen((request) async {
+        connections++;
+        final socket = await WebSocketTransformer.upgrade(request);
+        socket.done.then((_) => closedConnections++);
+        socket.add(jsonEncode({'type': 'auth_required'}));
+        socket.listen((rawMessage) {
+          final message =
+              jsonDecode(rawMessage as String) as Map<String, dynamic>;
+          switch (message['type']) {
+            case 'auth':
+              socket.add(jsonEncode({'type': 'auth_ok'}));
+            case 'get_config':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': {'location_name': 'Test Home'},
+                }),
+              );
+            case 'get_states':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': const [],
+                }),
+              );
+            case 'subscribe_events':
+              socket.add(
+                jsonEncode({
+                  'id': message['id'],
+                  'type': 'result',
+                  'success': true,
+                  'result': null,
+                }),
+              );
+          }
+        });
+      });
+
+      final client = HomeAssistantClient(
+        'http://${server.address.address}:${server.port}',
+        'test-token',
+      );
+      addTearDown(client.close);
+      await client.connect();
+      await client.suspend();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(closedConnections, 1);
+
+      await client.resume();
+      expect(connections, 2);
+    },
+  );
+
+  test(
     'retries again when a WebSocket reconnect handshake times out',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);

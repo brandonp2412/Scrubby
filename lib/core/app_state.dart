@@ -173,6 +173,7 @@ class AppState extends ChangeNotifier {
   static const _tokenKey = 'home_assistant_token';
   static const _roomLabelsKey = 'map_room_labels';
   static const _vacuumNamesKey = 'vacuum_display_names';
+  static const _notificationVacuumNamesKey = 'notification_vacuum_names';
   static const _scheduleOrderKey = 'schedule_order';
   static const _notificationHistoryKey = 'notification_history';
   final FlutterSecureStorage _secureStorage;
@@ -185,6 +186,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<VacuumEntity>>? _vacuumSubscription;
   StreamSubscription<DreameNotification>? _notificationSubscription;
   StreamSubscription<HomeAssistantConnectionStatus>? _connectionSubscription;
+  Future<void> _lifecycleTransition = Future<void>.value();
   List<VacuumEntity> vacuums = [];
   int selectedVacuum = 0;
   String homeName = 'Home';
@@ -294,6 +296,13 @@ class AppState extends ChangeNotifier {
         await _secureStorage.write(key: _urlKey, value: client.baseUrl);
         await _secureStorage.write(key: _tokenKey, value: token.trim());
       }
+      await _secureStorage.write(
+        key: _notificationVacuumNamesKey,
+        value: jsonEncode({
+          for (final entity in entities)
+            entity.entityId: _vacuumNames[entity.entityId] ?? entity.name,
+        }),
+      );
       await _vacuumSubscription?.cancel();
       await _notificationSubscription?.cancel();
       await _connectionSubscription?.cancel();
@@ -467,23 +476,45 @@ class AppState extends ChangeNotifier {
   }
 
   /// Move event delivery to the Android foreground-service isolate while the
-  /// Flutter UI is suspended. The UI socket remains responsible for state
-  /// updates whenever the app is visible.
-  Future<void> enterBackground() async {
+  /// Flutter UI is suspended. Only one Home Assistant socket remains active.
+  Future<void> enterBackground() => _queueLifecycleTransition(_enterBackground);
+
+  Future<void> _queueLifecycleTransition(Future<void> Function() action) {
+    return _lifecycleTransition = _lifecycleTransition.then(
+      (_) => action(),
+      onError: (_, _) => action(),
+    );
+  }
+
+  Future<void> _enterBackground() async {
     if (isDemo || _client == null) return;
     await _notificationSubscription?.cancel();
     _notificationSubscription = null;
-    await startBackgroundNotificationService();
+    await _client!.suspend();
+    final started = await startBackgroundNotificationService();
+    if (!started) {
+      _notificationSubscription = _client!.notificationUpdates.listen(
+        _showNotification,
+      );
+      await _client!.resume();
+      talker.warning(
+        'Background service unavailable; restored foreground connection',
+      );
+      return;
+    }
     talker.info('Moved notification monitoring to background service');
   }
 
-  Future<void> enterForeground() async {
+  Future<void> enterForeground() => _queueLifecycleTransition(_enterForeground);
+
+  Future<void> _enterForeground() async {
     await stopBackgroundNotificationService();
     await _reloadNotificationHistory();
     if (_client != null && _notificationSubscription == null) {
       _notificationSubscription = _client!.notificationUpdates.listen(
         _showNotification,
       );
+      await _client!.resume();
     }
     talker.info('Resumed foreground notification monitoring');
   }
@@ -1083,6 +1114,7 @@ class AppState extends ChangeNotifier {
     await _secureStorage.delete(key: _tokenKey);
     await _secureStorage.delete(key: _roomLabelsKey);
     await _secureStorage.delete(key: _vacuumNamesKey);
+    await _secureStorage.delete(key: _notificationVacuumNamesKey);
     await _secureStorage.delete(key: _scheduleOrderKey);
     await _secureStorage.delete(key: _notificationHistoryKey);
     await _vacuumSubscription?.cancel();

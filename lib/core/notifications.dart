@@ -27,6 +27,7 @@ const _backgroundChannelId = 'scrubby_background_service';
 const _backgroundNotificationId = 5100;
 const _androidNotificationIcon = 'ic_bg_service_small';
 const _notificationHistoryKey = 'notification_history';
+const _notificationVacuumNamesKey = 'notification_vacuum_names';
 
 Duration notificationDuplicateWindow(DreameNotification notification) =>
     notification.category == DreameNotificationCategory.consumable
@@ -92,11 +93,16 @@ Future<void> configureBackgroundNotificationService() async {
 
 Future<bool> _iosBackground(ServiceInstance service) async => true;
 
-Future<void> startBackgroundNotificationService() async {
-  if (!_supportsAndroidService) return;
+Future<bool> startBackgroundNotificationService() async {
+  if (!_supportsAndroidService) return false;
   try {
-    await FlutterBackgroundService().startService();
+    final started = await FlutterBackgroundService().startService();
+    if (!started) {
+      talker.warning('Android background notification service did not start');
+      return false;
+    }
     talker.info('Started background notification service');
+    return true;
   } catch (error, stackTrace) {
     talker.handle(
       error,
@@ -104,6 +110,7 @@ Future<void> startBackgroundNotificationService() async {
       'Could not start background notification service',
     );
     // The plugin is intentionally unavailable on desktop and in widget tests.
+    return false;
   }
 }
 
@@ -160,13 +167,19 @@ Future<void> _backgroundServiceEntrypoint(ServiceInstance service) async {
   }
 
   try {
-    client = HomeAssistantClient(url, token);
-    await client.connect();
-    final vacuums = await client.fetchVacuums();
-    talker.info(
-      'Background service connected; monitoring ${vacuums.length} vacuums',
+    final savedNames = jsonDecode(
+      credentials[_notificationVacuumNamesKey] ?? '{}',
     );
-    final names = {for (final vacuum in vacuums) vacuum.entityId: vacuum.name};
+    final names = savedNames is Map
+        ? savedNames.map(
+            (key, value) => MapEntry(key.toString(), value.toString()),
+          )
+        : <String, String>{};
+    client = HomeAssistantClient(url, token, notificationOnly: true);
+    await client.connect();
+    talker.info(
+      'Background service connected; monitoring Dreame notification events',
+    );
     var notificationQueue = Future<void>.value();
     notifications = client.notificationUpdates.listen((notification) {
       talker.info('Received ${notification.category.name} vacuum notification');
