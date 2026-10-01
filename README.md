@@ -27,13 +27,11 @@ Scrubby is a focused, beautiful Home Assistant companion for robot vacuums—bui
 ## Screenshots
 
 <p align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_en-US.png" alt="Scrubby robot vacuum dashboard" width="180" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_en-US.png" alt="Scrubby vacuum controls" width="180" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_en-US.png" alt="Scrubby floor map and room controls" width="180" />
-</p>
-<p align="center">
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4_en-US.png" alt="Scrubby cleaning schedules" width="180" />
-  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5_en-US.png" alt="Scrubby robot settings" width="180" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_en-US.png" alt="Scrubby robot vacuum dashboard" style="height: 667px !important;" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_en-US.png" alt="Scrubby vacuum controls" style="height: 667px !important;" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_en-US.png" alt="Scrubby floor map and room controls" style="height: 667px !important;" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/4_en-US.png" alt="Scrubby cleaning schedules" style="height: 667px !important;" />
+  <img src="fastlane/metadata/android/en-US/images/phoneScreenshots/5_en-US.png" alt="Scrubby robot settings" style="height: 667px !important;" />
 </p>
 
 ## Get Scrubby
