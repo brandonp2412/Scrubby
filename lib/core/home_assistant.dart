@@ -1710,6 +1710,13 @@ class HomeAssistantClient {
               },
             ],
             'action': [
+              {
+                'alias': 'Refresh vacuum state',
+                'service': 'homeassistant.update_entity',
+                'target': {'entity_id': vacuumEntityId},
+                'continue_on_error': true,
+              },
+              {'delay': '00:00:03'},
               for (final setting in settings.where(_isCleanGeniusSetting))
                 _scheduleSettingAction(setting),
               if (fanSpeed != null)
@@ -1718,6 +1725,7 @@ class HomeAssistantClient {
                   'service': 'vacuum.set_fan_speed',
                   'target': {'entity_id': vacuumEntityId},
                   'data': {'fan_speed': fanSpeed},
+                  'continue_on_error': true,
                 },
               for (final setting in settings.where(
                 (setting) => !_isCleanGeniusSetting(setting),
@@ -1879,17 +1887,20 @@ class HomeAssistantClient {
         'service': 'select.select_option',
         'target': target,
         'data': {'option': setting.value},
+        'continue_on_error': true,
       },
       VacuumSettingKind.number => {
         'alias': 'Set ${setting.name}',
         'service': 'number.set_value',
         'target': target,
         'data': {'value': double.tryParse(setting.value) ?? setting.value},
+        'continue_on_error': true,
       },
       VacuumSettingKind.toggle => {
         'alias': 'Set ${setting.name}',
         'service': setting.enabled ? 'switch.turn_on' : 'switch.turn_off',
         'target': target,
+        'continue_on_error': true,
       },
       VacuumSettingKind.action => throw ArgumentError(
         'Button actions cannot be added to a cleaning schedule.',

@@ -743,6 +743,13 @@ void main() {
           ]);
           expect(body['action'], [
             {
+              'alias': 'Refresh vacuum state',
+              'service': 'homeassistant.update_entity',
+              'target': {'entity_id': 'vacuum.downstairs'},
+              'continue_on_error': true,
+            },
+            {'delay': '00:00:03'},
+            {
               'service': 'vacuum.start',
               'target': {'entity_id': 'vacuum.downstairs'},
             },
@@ -828,10 +835,14 @@ void main() {
     );
 
     expect(actions.map((action) => action['service']), [
+      'homeassistant.update_entity',
+      null,
       'select.select_option',
       'vacuum.set_fan_speed',
       'dreame_vacuum.vacuum_clean_segment',
     ]);
+    expect(actions[2]['continue_on_error'], isTrue);
+    expect(actions[3]['continue_on_error'], isTrue);
     expect(actions.last['data'], {
       'segments': [2, 4],
       'repeats': 2,
@@ -879,14 +890,19 @@ void main() {
     );
 
     expect(actions.map((action) => action['service']), [
+      'homeassistant.update_entity',
+      null,
       'vacuum.set_fan_speed',
       'select.select_option',
       'select.select_option',
       'vacuum.start',
     ]);
-    expect(actions[0]['data'], {'fan_speed': 'Turbo'});
-    expect(actions[1]['data'], {'option': 'Sweeping and mopping'});
-    expect(actions[2]['data'], {'option': 'Deep'});
+    expect(actions[2]['data'], {'fan_speed': 'Turbo'});
+    expect(actions[3]['data'], {'option': 'Sweeping and mopping'});
+    expect(actions[4]['data'], {'option': 'Deep'});
+    expect(actions[2]['continue_on_error'], isTrue);
+    expect(actions[3]['continue_on_error'], isTrue);
+    expect(actions[4]['continue_on_error'], isTrue);
   });
 
   test(
