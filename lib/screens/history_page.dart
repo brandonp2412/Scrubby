@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:drafter/drafter.dart';
+import 'package:drafter/painting.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -162,9 +164,13 @@ class _TrendCard extends StatelessWidget {
         const SizedBox(height: 20),
         SizedBox(
           height: 150,
-          child: CustomPaint(
-            painter: _BarChartPainter(details.values),
-            child: const SizedBox.expand(),
+          child: ChartCanvas(
+            renderer: _HistoryBarRenderer(
+              title: details.chartTitle,
+              labels: _CleaningHistoryPageState._days,
+              values: details.values,
+            ),
+            animate: false,
           ),
         ),
         const SizedBox(height: 10),
@@ -218,19 +224,50 @@ class _HistoryRow extends StatelessWidget {
   );
 }
 
-class _BarChartPainter extends CustomPainter {
-  const _BarChartPainter(this.values);
+class _HistoryBarRenderer extends ChartRenderer {
+  const _HistoryBarRenderer({
+    required this.title,
+    required this.labels,
+    required this.values,
+  });
+
+  final String title;
+  final List<String> labels;
   final List<double> values;
 
   @override
-  void paint(Canvas canvas, Size size) {
+  String get accessibilityLabel => title;
+
+  @override
+  String get accessibilityValue {
+    final count = math.min(labels.length, values.length);
+    if (count == 0) return 'No data';
+    return AccessibilityFormat.points([
+      for (var index = 0; index < count; index++)
+        (labels[index], values[index]),
+    ]);
+  }
+
+  @override
+  void draw(
+    Canvas canvas,
+    Size size,
+    DrafterThemeColors theme,
+    double progress,
+  ) {
+    if (values.isEmpty || size.isEmpty) return;
+
     final maxValue = values.reduce(math.max);
+    if (maxValue <= 0) return;
+
     final slot = size.width / values.length;
     final barWidth = math.min(24.0, slot * .48);
     final background = Paint()..color = mint;
     final foreground = Paint()..color = ink;
+
     for (var index = 0; index < values.length; index++) {
-      final height = math.max(8.0, size.height * values[index] / maxValue);
+      final fullHeight = math.max(8.0, size.height * values[index] / maxValue);
+      final height = fullHeight * progress;
       final left = slot * index + (slot - barWidth) / 2;
       final backgroundRect = RRect.fromRectAndRadius(
         Rect.fromLTWH(left, 0, barWidth, size.height),
@@ -244,10 +281,6 @@ class _BarChartPainter extends CustomPainter {
       canvas.drawRRect(foregroundRect, foreground);
     }
   }
-
-  @override
-  bool shouldRepaint(covariant _BarChartPainter oldDelegate) =>
-      oldDelegate.values != values;
 }
 
 _MetricDetails _detailsFor(HistoryMetric metric) => switch (metric) {
