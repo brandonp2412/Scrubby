@@ -150,6 +150,7 @@ ThemeData buildTheme() {
       indicatorColor: mint,
       surfaceTintColor: Colors.transparent,
     ),
+    popupMenuTheme: const PopupMenuThemeData(menuPadding: EdgeInsets.zero),
     dialogTheme: const DialogThemeData(
       backgroundColor: _white,
       surfaceTintColor: Colors.transparent,
