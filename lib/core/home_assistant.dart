@@ -1693,6 +1693,9 @@ class HomeAssistantClient {
             segmentCapability.minimumRepeats,
             segmentCapability.maximumRepeats,
           );
+    final cleaningModeSetting = settings
+        .where(_isCleaningModeSetting)
+        .firstOrNull;
     final response = await _httpClient
         .post(
           Uri.parse('$baseUrl/api/config/automation/config/$id'),
@@ -1719,6 +1722,13 @@ class HomeAssistantClient {
               {'delay': '00:00:03'},
               for (final setting in settings.where(_isCleanGeniusSetting))
                 _scheduleSettingAction(setting),
+              if (cleaningModeSetting != null)
+                {
+                  'wait_template':
+                      "{{ '${cleaningModeSetting.value}' in (state_attr('${cleaningModeSetting.entityId}', 'options') or []) }}",
+                  'timeout': '00:00:30',
+                  'continue_on_timeout': false,
+                },
               if (fanSpeed != null)
                 {
                   'alias': 'Set suction power',
@@ -1887,7 +1897,7 @@ class HomeAssistantClient {
         'service': 'select.select_option',
         'target': target,
         'data': {'option': setting.value},
-        'continue_on_error': true,
+        'continue_on_error': !_isCleaningModeSetting(setting),
       },
       VacuumSettingKind.number => {
         'alias': 'Set ${setting.name}',
@@ -1907,6 +1917,10 @@ class HomeAssistantClient {
       ),
     };
   }
+
+  bool _isCleaningModeSetting(VacuumSetting setting) =>
+      setting.kind == VacuumSettingKind.select &&
+      setting.entityId.endsWith('_cleaning_mode');
 
   bool _isCleanGeniusSetting(VacuumSetting setting) {
     final searchable = '${setting.entityId} ${setting.name}'
