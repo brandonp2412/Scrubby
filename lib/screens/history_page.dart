@@ -137,10 +137,8 @@ class _SummaryCard extends StatelessWidget {
         const SizedBox(height: 20),
         Text(
           'LAST 7 DAYS',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: .8,
-          ),
+          style: Theme.of(context).textTheme.bodySmall
+              ?.copyWith(fontWeight: FontWeight.w800, letterSpacing: .8),
         ),
         const SizedBox(height: 6),
         Text(details.total, style: Theme.of(context).textTheme.displayLarge),
@@ -156,34 +154,51 @@ class _TrendCard extends StatelessWidget {
   final _MetricDetails details;
 
   @override
-  Widget build(BuildContext context) => SurfaceCard(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(details.chartTitle, style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 20),
-        SizedBox(
-          height: 150,
-          child: ChartCanvas(
-            renderer: _HistoryBarRenderer(
-              title: details.chartTitle,
-              labels: _CleaningHistoryPageState._days,
-              values: details.values,
-            ),
-            animate: false,
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final axisLabelStyle = TextStyle(
+      color: colorScheme.onSurface,
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+    );
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            details.chartTitle,
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            for (final day in _CleaningHistoryPageState._days)
-              Text(day, style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 20),
+          SizedBox(
+            height: 150,
+            child: DrafterTheme.brightness(
+              dark: Theme.of(context).brightness == Brightness.dark,
+              child: ChartCanvas(
+                renderer: _HistoryBarRenderer(
+                  title: details.chartTitle,
+                  labels: _CleaningHistoryPageState._days,
+                  values: details.values,
+                  barColor: colorScheme.primary,
+                  backgroundColor: colorScheme.primaryContainer,
+                ),
+                animate: false,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              for (final day in _CleaningHistoryPageState._days)
+                Text(day, style: axisLabelStyle),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HistoryRow extends StatelessWidget {
@@ -229,11 +244,15 @@ class _HistoryBarRenderer extends ChartRenderer {
     required this.title,
     required this.labels,
     required this.values,
+    required this.barColor,
+    required this.backgroundColor,
   });
 
   final String title;
   final List<String> labels;
   final List<double> values;
+  final Color barColor;
+  final Color backgroundColor;
 
   @override
   String get accessibilityLabel => title;
@@ -260,21 +279,31 @@ class _HistoryBarRenderer extends ChartRenderer {
     final maxValue = values.reduce(math.max);
     if (maxValue <= 0) return;
 
-    final slot = size.width / values.length;
+    final bounds = ChartBounds.insets(
+      size,
+      left: 8,
+      top: 24,
+      right: 8,
+      bottom: 16,
+    );
+    final slot = bounds.width / values.length;
     final barWidth = math.min(24.0, slot * .48);
-    final background = Paint()..color = mint;
-    final foreground = Paint()..color = ink;
+    final background = Paint()..color = backgroundColor;
+    final foreground = Paint()..color = barColor;
 
     for (var index = 0; index < values.length; index++) {
-      final fullHeight = math.max(8.0, size.height * values[index] / maxValue);
+      final fullHeight = math.max(
+        8.0,
+        bounds.height * values[index] / maxValue,
+      );
       final height = fullHeight * progress;
-      final left = slot * index + (slot - barWidth) / 2;
+      final left = bounds.left + slot * index + (slot - barWidth) / 2;
       final backgroundRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, 0, barWidth, size.height),
+        Rect.fromLTWH(left, bounds.top, barWidth, bounds.height),
         const Radius.circular(8),
       );
       final foregroundRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(left, size.height - height, barWidth, height),
+        Rect.fromLTWH(left, bounds.bottom - height, barWidth, height),
         const Radius.circular(8),
       );
       canvas.drawRRect(backgroundRect, background);
