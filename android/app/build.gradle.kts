@@ -65,6 +65,11 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
     }
+
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 dependencies {
