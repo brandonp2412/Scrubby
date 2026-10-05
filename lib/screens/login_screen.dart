@@ -197,18 +197,15 @@ class _WelcomeCopy extends StatelessWidget {
         Text(
           'A cleaner home,\nwithout the fuss.',
           textAlign: compact ? TextAlign.center : TextAlign.left,
-          style: Theme.of(context).textTheme.displayLarge?.copyWith(
-            fontSize: compact ? 42 : 64,
-            color: Colors.white,
-          ),
+          style: Theme.of(context).textTheme.displayLarge
+              ?.copyWith(fontSize: compact ? 42 : 64, color: Colors.white),
         ),
         const SizedBox(height: 20),
         Text(
           'Your robot vacuums, beautifully organised\nand powered by Home Assistant.',
           textAlign: compact ? TextAlign.center : TextAlign.left,
-          style: Theme.of(
-            context,
-          ).textTheme.bodyLarge?.copyWith(color: Colors.white70),
+          style: Theme.of(context).textTheme.bodyLarge
+              ?.copyWith(color: Colors.white70),
         ),
       ],
     );

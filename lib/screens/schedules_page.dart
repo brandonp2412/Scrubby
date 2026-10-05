@@ -17,9 +17,7 @@ class SchedulesPage extends StatelessWidget {
         children: [
           SectionHeader(
             title: 'Cleaning rhythm',
-            subtitle: state.isDemo
-                ? 'Demo schedules stay in this session.'
-                : 'Schedules run in Home Assistant, even when Scrubby is closed.',
+            subtitle: state.isDemo ? 'Demo schedules stay in this session.' : 'Schedules run in Home Assistant, even when Scrubby is closed.',
             trailing: FilledButton.icon(
               onPressed: () => _add(context),
               icon: const Icon(Icons.add_rounded),
@@ -457,9 +455,10 @@ class _ScheduleSheetState extends State<_ScheduleSheet> {
   bool get customModeUsesSuction {
     final setting = cleaningModeSetting;
     if (setting == null) return true;
-    final mode = _selectedValue(
-      setting,
-    ).toLowerCase().replaceAll('_', ' ').trim();
+    final mode = _selectedValue(setting)
+        .toLowerCase()
+        .replaceAll('_', ' ')
+        .trim();
     return mode != 'mop' && mode != 'mopping';
   }
 

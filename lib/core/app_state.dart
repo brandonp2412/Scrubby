@@ -275,8 +275,7 @@ class AppState extends ChangeNotifier {
           'Saved Home Assistant session expired; sign-in required',
         );
         await _secureStorage.delete(key: _tokenKey);
-        restoreError =
-            'Your Home Assistant session has expired. Enter a new access token to reconnect.';
+        restoreError = 'Your Home Assistant session has expired. Enter a new access token to reconnect.';
       } else {
         talker.handle(
           error,
@@ -1156,8 +1155,7 @@ class AppState extends ChangeNotifier {
     roomCapabilityError = null;
     settingsError = null;
     scheduleError = null;
-    restoreError =
-        'Your Home Assistant session has expired. Enter a new access token to reconnect.';
+    restoreError = 'Your Home Assistant session has expired. Enter a new access token to reconnect.';
     notifyListeners();
   }
 

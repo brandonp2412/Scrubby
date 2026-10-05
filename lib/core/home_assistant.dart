@@ -282,15 +282,13 @@ class DreameNotification {
     _ => _eventDescription(value, fallback: 'A consumable needs attention'),
   };
 
-  static String _informationMessage(String? value) => switch (_eventKey(
-    value,
-  )) {
-    'dustcollection' =>
-      'Auto-empty was not performed during the do-not-disturb period.',
-    'cleaningpaused' =>
-      'Cleaning is paused because the battery is low and will resume after charging.',
-    _ => _eventDescription(value, fallback: 'Robot information'),
-  };
+  static String _informationMessage(String? value) =>
+      switch (_eventKey(value)) {
+        'dustcollection' =>
+          'Auto-empty was not performed during the do-not-disturb period.',
+        'cleaningpaused' => 'Cleaning is paused because the battery is low and will resume after charging.',
+        _ => _eventDescription(value, fallback: 'Robot information'),
+      };
 
   static String _eventDescription(String? value, {required String fallback}) {
     final raw = value?.trim();
@@ -298,8 +296,7 @@ class DreameNotification {
     return switch (_eventKey(raw)) {
       'dustcollection' =>
         'Auto-empty was not performed during the do-not-disturb period.',
-      'cleaningpaused' =>
-        'Cleaning is paused because the battery is low and will resume after charging.',
+      'cleaningpaused' => 'Cleaning is paused because the battery is low and will resume after charging.',
       _ => _humanize(raw),
     };
   }
@@ -375,9 +372,8 @@ class VacuumSetting {
     if (RegExp(r'brush|filter|sensor|maintenance|reset').hasMatch(searchable)) {
       return 'Care & maintenance';
     }
-    if (RegExp(
-      r'clean|suction|route|obstacle|collision|edge|boost',
-    ).hasMatch(searchable)) {
+    if (RegExp(r'clean|suction|route|obstacle|collision|edge|boost')
+        .hasMatch(searchable)) {
       return 'Cleaning';
     }
     return 'Robot preferences';
