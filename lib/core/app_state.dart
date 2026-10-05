@@ -270,13 +270,22 @@ class AppState extends ChangeNotifier {
         await login(savedUrl!, token, persist: false);
       }
     } catch (error, stackTrace) {
-      talker.handle(
-        error,
-        stackTrace,
-        'Could not restore saved Scrubby session',
-      );
-      restoreError =
-          'Could not restore the saved connection. Please reconnect.';
+      if (error is HomeAssistantAuthenticationException) {
+        talker.warning(
+          'Saved Home Assistant session expired; sign-in required',
+        );
+        await _secureStorage.delete(key: _tokenKey);
+        restoreError =
+            'Your Home Assistant session has expired. Enter a new access token to reconnect.';
+      } else {
+        talker.handle(
+          error,
+          stackTrace,
+          'Could not restore saved Scrubby session',
+        );
+        restoreError =
+            'Could not restore the saved connection. Please reconnect.';
+      }
     } finally {
       isInitialized = true;
       notifyListeners();
@@ -327,6 +336,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       unawaited(_notificationPresenter.requestPermissions());
       await refreshSchedules();
+      if (!identical(_client, client)) return;
       talker.info(
         'Connected to Home Assistant with ${entities.length} vacuums',
       );
@@ -967,11 +977,12 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshSchedules() async {
     if (isDemo || _client == null) return;
+    final client = _client!;
     schedulesLoading = true;
     scheduleError = null;
     notifyListeners();
     try {
-      final loaded = await _client!.fetchScrubbySchedules();
+      final loaded = await client.fetchScrubbySchedules();
       final savedOrder = await _loadScheduleOrder();
       final loadedSchedules = loaded
           .map(CleaningSchedule.fromHomeAssistant)
@@ -981,8 +992,12 @@ class AppState extends ChangeNotifier {
         ..addAll(_applyScheduleOrder(loadedSchedules, savedOrder));
       await _saveScheduleOrder();
     } catch (error, stackTrace) {
-      talker.handle(error, stackTrace, 'Could not load cleaning schedules');
-      scheduleError = _message(error);
+      if (error is HomeAssistantAuthenticationException) {
+        await _expireAuthentication(client);
+      } else {
+        talker.handle(error, stackTrace, 'Could not load cleaning schedules');
+        scheduleError = _message(error);
+      }
     } finally {
       schedulesLoading = false;
       notifyListeners();
@@ -1106,6 +1121,44 @@ class AppState extends ChangeNotifier {
       busyScheduleIds.remove(schedule.id);
       notifyListeners();
     }
+  }
+
+  Future<void> _expireAuthentication(HomeAssistantClient client) async {
+    if (!identical(_client, client)) return;
+
+    talker.warning('Home Assistant session expired; returning to sign in');
+    _client = null;
+    final vacuumSubscription = _vacuumSubscription;
+    final notificationSubscription = _notificationSubscription;
+    final connectionSubscription = _connectionSubscription;
+    _vacuumSubscription = null;
+    _notificationSubscription = null;
+    _connectionSubscription = null;
+
+    await stopBackgroundNotificationService();
+    await _secureStorage.delete(key: _tokenKey);
+    await vacuumSubscription?.cancel();
+    await notificationSubscription?.cancel();
+    await connectionSubscription?.cancel();
+    await client.close();
+
+    vacuums = [];
+    selectedVacuum = 0;
+    isDemo = false;
+    connectionStatus = HomeAssistantConnectionStatus.connected;
+    _vacuumSegments.clear();
+    _vacuumSettings.clear();
+    _vacuumDeviceInfo.clear();
+    _segmentCleaningCapabilities.clear();
+    busySettingIds.clear();
+    schedules.clear();
+    busyScheduleIds.clear();
+    roomCapabilityError = null;
+    settingsError = null;
+    scheduleError = null;
+    restoreError =
+        'Your Home Assistant session has expired. Enter a new access token to reconnect.';
+    notifyListeners();
   }
 
   Future<void> logout() async {

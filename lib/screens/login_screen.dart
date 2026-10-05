@@ -256,6 +256,9 @@ class _LoginCard extends StatelessWidget {
           TextField(
             controller: parent.urlController,
             keyboardType: TextInputType.url,
+            textCapitalization: TextCapitalization.none,
+            autocorrect: false,
+            enableSuggestions: false,
             decoration: const InputDecoration(
               hintText: 'https://home.example.com',
               prefixIcon: Icon(Icons.home_outlined),

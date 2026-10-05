@@ -206,9 +206,10 @@ IconData optionIcon(String value, {String? field}) {
       text.contains('normal')) {
     return Icons.balance_rounded;
   }
-  if (text.contains('turbo') ||
-      text.contains('max') ||
-      text.contains('strong')) {
+  if (text.contains('strong')) {
+    return Icons.air_rounded;
+  }
+  if (text.contains('turbo') || text.contains('max')) {
     return Icons.bolt_rounded;
   }
   if (text.contains('suction') || text.contains('power')) {

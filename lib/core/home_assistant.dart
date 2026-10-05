@@ -472,6 +472,17 @@ int? _percentage(Object? value) {
 
 enum HomeAssistantConnectionStatus { connected, reconnecting, offline }
 
+class HomeAssistantAuthenticationException implements Exception {
+  const HomeAssistantAuthenticationException([
+    this.message = 'That access token was not accepted.',
+  ]);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class HomeAssistantClient {
   HomeAssistantClient(
     String url,
@@ -656,7 +667,7 @@ class HomeAssistantClient {
               case 'auth_invalid':
                 if (!ready.isCompleted) {
                   ready.completeError(
-                    Exception('That access token was not accepted.'),
+                    const HomeAssistantAuthenticationException(),
                   );
                 }
               case 'result':
@@ -1959,7 +1970,10 @@ class HomeAssistantClient {
 
   void _requireSuccess(http.Response response, String operation) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
-    if (response.statusCode == 401 || response.statusCode == 403) {
+    if (response.statusCode == 401) {
+      throw const HomeAssistantAuthenticationException();
+    }
+    if (response.statusCode == 403) {
       throw Exception(
         'Your Home Assistant token is not allowed to $operation. An administrator token is required.',
       );

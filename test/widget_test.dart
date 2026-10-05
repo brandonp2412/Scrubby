@@ -17,6 +17,7 @@ import 'package:scrubby/screens/home_page.dart';
 import 'package:scrubby/screens/rooms_page.dart';
 import 'package:scrubby/screens/schedules_page.dart';
 import 'package:scrubby/screens/settings_page.dart';
+import 'package:scrubby/widgets/shared.dart';
 
 void main() {
   setUp(() => FlutterSecureStorage.setMockInitialValues({}));
@@ -28,6 +29,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Connect your home'), findsOneWidget);
     expect(find.text('Explore with demo home'), findsOneWidget);
+  });
+
+  testWidgets('Home Assistant URL input never auto-capitalizes', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const ScrubbyApp());
+    await tester.pumpAndSettle();
+
+    final urlField = tester
+        .widgetList<TextField>(find.byType(TextField))
+        .firstWhere((field) => field.keyboardType == TextInputType.url);
+
+    expect(urlField.textCapitalization, TextCapitalization.none);
+    expect(urlField.autocorrect, isFalse);
+    expect(urlField.enableSuggestions, isFalse);
+  });
+
+  test('strong and turbo suction options use different icons', () {
+    expect(optionIcon('Strong'), Icons.air_rounded);
+    expect(optionIcon('Turbo'), Icons.bolt_rounded);
+    expect(optionIcon('Strong'), isNot(optionIcon('Turbo')));
   });
 
   testWidgets('demo home opens the vacuum dashboard', (
@@ -721,6 +743,64 @@ void main() {
     expect(schedules.single.settings.single.name, 'Cleaning route');
     expect(schedules.single.settings.single.value, 'Deep');
   });
+
+  test('401 while loading schedules is an authentication failure', () async {
+    final client = HomeAssistantClient(
+      'http://homeassistant.local:8123',
+      'expired-token',
+      httpClient: MockClient(
+        (_) async => http.Response('', HttpStatus.unauthorized),
+      ),
+    );
+    addTearDown(client.close);
+
+    await expectLater(
+      client.fetchScrubbySchedules(),
+      throwsA(isA<HomeAssistantAuthenticationException>()),
+    );
+  });
+
+  test(
+    'expired authentication while refreshing schedules returns to sign in',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({
+        'home_assistant_token': 'expired-token',
+      });
+      final client = HomeAssistantClient(
+        'http://homeassistant.local:8123',
+        'expired-token',
+        httpClient: MockClient(
+          (_) async => http.Response('', HttpStatus.unauthorized),
+        ),
+      );
+      final state = AppState()
+        ..savedUrl = 'http://homeassistant.local:8123'
+        ..vacuums = const [
+          VacuumEntity(
+            entityId: 'vacuum.test',
+            name: 'Test vacuum',
+            state: 'docked',
+            battery: 100,
+          ),
+        ]
+        ..setClientForTesting(client);
+      addTearDown(state.dispose);
+
+      await state.refreshSchedules();
+
+      expect(state.vacuums, isEmpty);
+      expect(state.savedUrl, 'http://homeassistant.local:8123');
+      expect(
+        state.restoreError,
+        'Your Home Assistant session has expired. Enter a new access token to reconnect.',
+      );
+      expect(state.scheduleError, isNull);
+      expect(
+        await const FlutterSecureStorage().read(key: 'home_assistant_token'),
+        isNull,
+      );
+    },
+  );
 
   test('creates a Home Assistant automation and reloads automations', () async {
     var reloaded = false;
