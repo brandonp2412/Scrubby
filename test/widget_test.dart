@@ -972,17 +972,24 @@ void main() {
     expect(actions.map((action) => action['service']), [
       'homeassistant.update_entity',
       null,
+      null,
       'vacuum.set_fan_speed',
       'select.select_option',
       'select.select_option',
       'vacuum.start',
     ]);
-    expect(actions[2]['data'], {'fan_speed': 'Turbo'});
-    expect(actions[3]['data'], {'option': 'Sweeping and mopping'});
-    expect(actions[4]['data'], {'option': 'Deep'});
-    expect(actions[2]['continue_on_error'], isTrue);
+    expect(
+      actions[2]['wait_template'],
+      "{{ 'Sweeping and mopping' in (state_attr('select.dreame_cleaning_mode', 'options') or []) }}",
+    );
+    expect(actions[2]['timeout'], '00:00:30');
+    expect(actions[2]['continue_on_timeout'], isFalse);
+    expect(actions[3]['data'], {'fan_speed': 'Turbo'});
+    expect(actions[4]['data'], {'option': 'Sweeping and mopping'});
+    expect(actions[5]['data'], {'option': 'Deep'});
     expect(actions[3]['continue_on_error'], isTrue);
-    expect(actions[4]['continue_on_error'], isTrue);
+    expect(actions[4]['continue_on_error'], isFalse);
+    expect(actions[5]['continue_on_error'], isTrue);
   });
 
   test(
