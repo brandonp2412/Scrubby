@@ -341,6 +341,11 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/keystore.jks
           printf 'storeFile=keystore.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$ANDROID_STORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD" > android/key.properties
       - run: flutter pub get --enforce-lockfile
+      - name: Make JNI native assets reproducible
+        run: >-
+          sed -i
+          's/"-Wl,-z,max-page-size=16384"/"-Wl,--build-id=none,-z,max-page-size=16384"/'
+          "$HOME/.pub-cache"/hosted/pub.dev/jni-*/src/CMakeLists.txt
       - name: Build Android release artifacts
         run: |
           flutter build apk --release --split-per-abi
