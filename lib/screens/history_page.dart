@@ -137,8 +137,10 @@ class _SummaryCard extends StatelessWidget {
         const SizedBox(height: 20),
         Text(
           'LAST 7 DAYS',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(fontWeight: FontWeight.w800, letterSpacing: .8),
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: .8,
+          ),
         ),
         const SizedBox(height: 6),
         Text(details.total, style: Theme.of(context).textTheme.displayLarge),

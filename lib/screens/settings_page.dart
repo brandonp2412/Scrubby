@@ -74,8 +74,9 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(
               deviceDescription,
               key: const ValueKey('vacuum-make-model'),
-              style: Theme.of(context).textTheme.bodyLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
           ],
@@ -104,7 +105,8 @@ class _SettingsPageState extends State<SettingsPage> {
           else if (groups.isEmpty && unavailableSettings.isEmpty)
             if (_query.isEmpty)
               _EmptySettings(
-                message: 'Home Assistant did not expose any configurable entities for this robot. Enable its switch, select, number, and button entities in Home Assistant, then refresh.',
+                message:
+                    'Home Assistant did not expose any configurable entities for this robot. Enable its switch, select, number, and button entities in Home Assistant, then refresh.',
                 onRetry: state.refreshVacuumSettings,
               )
             else ...[
@@ -355,8 +357,9 @@ class _SettingTile extends StatelessWidget {
       await state.setVacuumSetting(setting, value);
     } catch (error) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(_message(error))));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(_message(error))));
       }
     }
   }

@@ -216,9 +216,9 @@ Future<bool> _recordBackgroundNotification(
 ) async {
   try {
     final now = DateTime.now();
-    final saved = jsonDecode(
-      await storage.read(key: _notificationHistoryKey) ?? '[]',
-    ) as List<dynamic>;
+    final saved =
+        jsonDecode(await storage.read(key: _notificationHistoryKey) ?? '[]')
+            as List<dynamic>;
     final records = saved.whereType<Map<String, dynamic>>().toList();
     final duplicate = records.any((record) {
       final recordedAt = DateTime.tryParse(
