@@ -210,12 +210,6 @@ jobs:
         with:
           name: screenshots-tenInchScreenshots
           path: fastlane/metadata/android/en-US/images/tenInchScreenshots
-      - name: Regenerate rounded README screenshots
-        run: |
-          python3 -m venv /tmp/readme-images-venv
-          /tmp/readme-images-venv/bin/python -m pip install "Pillow>=11,<13"
-          /tmp/readme-images-venv/bin/python scripts/round-readme-screenshots.py
-
       - name: Configure Git
         run: |
           git config --local user.email "action@github.com"
@@ -267,7 +261,7 @@ jobs:
           set -euo pipefail
           BASE_SHA=$(git rev-parse HEAD)
 
-          git add pubspec.yaml fastlane/metadata assets/changelogs docs/screenshots
+          git add pubspec.yaml fastlane/metadata assets/changelogs
           git commit -m "Release $VERSION [skip ci]"
           gh auth setup-git
 
