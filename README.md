@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="android/app/src/main/ic_launcher-playstore.png" alt="Scrubby app icon" width="112" />
+  <img src="docs/readme-icon.png" alt="Scrubby app icon" width="112" />
 
 # Scrubby
 
