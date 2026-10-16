@@ -1,0 +1,4 @@
+• Add pinned Flutter SDK submodule
+• Give split APKs ordered ABI version codes
+• chore: stop tracking Serena project files
+• fix(ci): skip scheduled checks when release is not due
