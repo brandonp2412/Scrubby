@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -489,6 +490,8 @@ class HomeAssistantClient {
     this.token, {
     http.Client? httpClient,
     this.notificationOnly = false,
+    this.mapCatchupInterval = const Duration(seconds: 5),
+    this.mapCatchupAttempts = 8,
     this.heartbeatInterval = const Duration(minutes: 2),
     this.heartbeatTimeout = const Duration(seconds: 15),
     this.connectionTimeout = const Duration(seconds: 12),
@@ -501,6 +504,8 @@ class HomeAssistantClient {
       Duration(minutes: 15),
     ],
   }) : assert(reconnectDelays.isNotEmpty),
+       assert(mapCatchupInterval > Duration.zero),
+       assert(mapCatchupAttempts >= 0),
        baseUrl = url.trim().replaceFirst(RegExp(r'/$'), ''),
        _httpClient = httpClient ?? http.Client(),
        _ownsHttpClient = httpClient == null;
@@ -508,6 +513,8 @@ class HomeAssistantClient {
   final String baseUrl;
   final String token;
   final bool notificationOnly;
+  final Duration mapCatchupInterval;
+  final int mapCatchupAttempts;
   final http.Client _httpClient;
   final bool _ownsHttpClient;
   final Duration heartbeatInterval;
@@ -525,6 +532,8 @@ class HomeAssistantClient {
   final Map<String, String> _mapEntityIds = {};
   final Map<String, Timer> _mapRefreshTimers = {};
   final Map<String, int> _mapRefreshVersions = {};
+  final Map<String, int> _mapAppliedVersions = {};
+  Timer? _mapCatchupTimer;
   final Map<int, Completer<Object?>> _pendingCommands = {};
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _socketSubscription;
@@ -872,6 +881,17 @@ class HomeAssistantClient {
         _isBatteryState(newState)) {
       _emitVacuumUpdate();
     }
+    if (entityId.startsWith('vacuum.') &&
+        oldState?['state'] != (newState is Map ? newState['state'] : null) &&
+        (oldState?['state'] == 'cleaning' ||
+            oldState?['state'] == 'returning' ||
+            oldState?['state'] == 'paused') &&
+        (newState is Map &&
+            (newState['state'] == 'returning' ||
+                newState['state'] == 'docked' ||
+                newState['state'] == 'idle'))) {
+      refreshMaps();
+    }
     if (entityId.startsWith('camera.') || entityId.startsWith('image.')) {
       _scheduleAffectedMapRefreshes(entityId);
     }
@@ -984,6 +1004,22 @@ class HomeAssistantClient {
     _vacuumUpdates.add(vacuums);
   }
 
+  /// Recheck after opening: Dreame may initially serve the previous frame.
+  void refreshMaps() {
+    if (_closed || _suspended || notificationOnly) return;
+    _scheduleAllMapRefreshes();
+    _mapCatchupTimer?.cancel();
+    if (mapCatchupAttempts == 0) return;
+    _mapCatchupTimer = Timer.periodic(mapCatchupInterval, (timer) {
+      if (_closed || _suspended) {
+        timer.cancel();
+        return;
+      }
+      _scheduleAllMapRefreshes();
+      if (timer.tick >= mapCatchupAttempts) timer.cancel();
+    });
+  }
+
   void _scheduleAllMapRefreshes() {
     for (final entityId in _states.keys) {
       if (entityId.startsWith('vacuum.')) _scheduleMapRefresh(entityId);
@@ -1016,7 +1052,7 @@ class HomeAssistantClient {
   }
 
   Future<void> _refreshMap(String vacuumId, int version) async {
-    if (_closed) return;
+    if (_closed || _suspended) return;
     final states = _states.values.toList(growable: false);
     final vacuumState = _states[vacuumId];
     if (vacuumState == null) return;
@@ -1029,9 +1065,15 @@ class HomeAssistantClient {
     final mapEntityId = mapEntity['entity_id'] as String;
     _mapEntityIds[vacuumId] = mapEntityId;
     final image = await _fetchMap(mapEntity, avoidCache: true);
-    if (_closed || _mapRefreshVersions[vacuumId] != version || image == null) {
+    if (_closed ||
+        _suspended ||
+        _mapEntityIds[vacuumId] != mapEntityId ||
+        (_mapAppliedVersions[vacuumId] ?? 0) > version ||
+        image == null) {
       return;
     }
+    _mapAppliedVersions[vacuumId] = version;
+    if (listEquals(_mapImages[vacuumId], image)) return;
     _mapImages[vacuumId] = image;
     _emitVacuumUpdate();
   }
@@ -1094,7 +1136,11 @@ class HomeAssistantClient {
       0,
       reconnectDelays.length - 1,
     );
-    final delay = reconnectDelays[delayIndex];
+    final configuredDelay = reconnectDelays[delayIndex];
+    final delay =
+        !notificationOnly && configuredDelay > const Duration(seconds: 15)
+        ? const Duration(seconds: 15)
+        : configuredDelay;
     talker.info('Scheduling Home Assistant reconnect in ${delay.inSeconds}s');
     _reconnectTimer = Timer(
       delay,
@@ -1114,6 +1160,7 @@ class HomeAssistantClient {
     _closed = true;
     talker.info('Closing Home Assistant connection');
     _reconnectTimer?.cancel();
+    _mapCatchupTimer?.cancel();
     _stopHeartbeat();
     for (final timer in _mapRefreshTimers.values) {
       timer.cancel();
@@ -1133,6 +1180,11 @@ class HomeAssistantClient {
   Future<void> suspend() async {
     if (_closed || _suspended) return;
     _suspended = true;
+    _mapCatchupTimer?.cancel();
+    for (final timer in _mapRefreshTimers.values) {
+      timer.cancel();
+    }
+    _mapRefreshTimers.clear();
     _reconnectTimer?.cancel();
     _stopHeartbeat();
     _connectionGeneration++;

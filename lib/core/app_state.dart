@@ -334,6 +334,7 @@ class AppState extends ChangeNotifier {
       await _loadVacuumSegments();
       await refreshVacuumSettings();
       notifyListeners();
+      client.refreshMaps();
       unawaited(_notificationPresenter.requestPermissions());
       await refreshSchedules();
       if (!identical(_client, client)) return;
@@ -526,6 +527,7 @@ class AppState extends ChangeNotifier {
       );
       await _client!.resume();
     }
+    _client?.refreshMaps();
     talker.info('Resumed foreground notification monitoring');
   }
 

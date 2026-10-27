@@ -1302,6 +1302,8 @@ void main() {
         'http://${server.address.address}:${server.port}',
         'test-token',
         httpClient: mapClient,
+        mapCatchupInterval: const Duration(milliseconds: 600),
+        mapCatchupAttempts: 1,
       );
       addTearDown(client.close);
       expect(await client.connect(), 'Test Home');
@@ -1322,6 +1324,17 @@ void main() {
       expect(updated.state, 'cleaning');
       expect(updated.mapImage, [2]);
       expect((await notification).body, 'Left wheel blocked');
+
+      // The camera can initially serve an old frame without another event.
+      final catchup = client.vacuumUpdates.firstWhere(
+        (vacuums) => vacuums.single.mapImage?.first == 4,
+      );
+      client.refreshMaps();
+      expect(
+        (await catchup.timeout(const Duration(seconds: 3))).single.mapImage,
+        [4],
+      );
+      expect(mapFetches, 4);
     },
   );
 
