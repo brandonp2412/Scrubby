@@ -2040,6 +2040,28 @@ void main() {
     expect(find.text('Carpet cleaning mode'), findsOneWidget);
   });
 
+  testWidgets('shows human-readable vacuum model names', (
+    WidgetTester tester,
+  ) async {
+    final state = _SettingsTestState(
+      const [],
+      deviceInfo: const VacuumDeviceInfo(
+        manufacturer: 'Dreametech™',
+        model: 'dreame.vacuum.r2469a',
+      ),
+    )..startDemo();
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: SettingsPage(state: state)),
+      ),
+    );
+
+    expect(find.text('Dreametech™ L10s Ultra Gen 2'), findsOneWidget);
+    expect(find.textContaining('dreame.vacuum.r2469a'), findsNothing);
+  });
+
   testWidgets('shows and updates Dreame carpet settings', (
     WidgetTester tester,
   ) async {
@@ -2232,13 +2254,17 @@ class _DelayedVacuumClient extends HomeAssistantClient {
 }
 
 class _SettingsTestState extends AppState {
-  _SettingsTestState(this.settings)
+  _SettingsTestState(this.settings, {this.deviceInfo})
     : super(secureStorage: const _FakeSecureStorage());
 
   final List<VacuumSetting> settings;
+  final VacuumDeviceInfo? deviceInfo;
 
   @override
   List<VacuumSetting> get vacuumSettings => settings;
+
+  @override
+  VacuumDeviceInfo? deviceInfoForVacuum(String entityId) => deviceInfo;
 }
 
 class _FakeSecureStorage extends FlutterSecureStorage {

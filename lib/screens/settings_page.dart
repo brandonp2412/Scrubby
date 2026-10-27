@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
 import '../core/home_assistant.dart';
+import '../core/vacuum_model_names.dart';
 import '../theme.dart';
 import '../widgets/shared.dart';
 
@@ -48,7 +49,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final deviceInfo = state.deviceInfoForVacuum(state.vacuum.entityId);
     final deviceDescription = [
       deviceInfo?.manufacturer,
-      deviceInfo?.model,
+      vacuumModelDisplayName(deviceInfo?.model),
     ].whereType<String>().where((value) => value.trim().isNotEmpty).join(' ');
     final groups = <String, List<VacuumSetting>>{};
     final unavailableSettings = <VacuumSetting>[];
