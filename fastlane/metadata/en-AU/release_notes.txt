@@ -1,4 +1,8 @@
-• Add pinned Flutter SDK submodule
-• Give split APKs ordered ABI version codes
-• chore: stop tracking Serena project files
-• fix(ci): skip scheduled checks when release is not due
+• Prevent agents from trying to use pinned flutter submodule
+• Refresh Dreame maps promptly on foreground and after cleaning
+• Show nicer robo vac names
+• chore(android): upgrade Kotlin Gradle plugin to 2.4.20
+• chore: reuse Play Store screenshots in README
+• docs: round README app icon
+• docs: round README screenshots in release pipeline
+• merge: reconcile cross-host project histories
