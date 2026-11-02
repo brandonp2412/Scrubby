@@ -48,6 +48,11 @@ ThemeData buildTheme() {
     brightness: Brightness.light,
     colorScheme: colorScheme,
     scaffoldBackgroundColor: cream,
+    sliderTheme: const SliderThemeData(
+      trackHeight: 3,
+      thumbShape: RoundSliderThumbShape(enabledThumbRadius: 7),
+      overlayShape: RoundSliderOverlayShape(overlayRadius: 14),
+    ),
   );
 
   const roundedRectangle = RoundedRectangleBorder(
