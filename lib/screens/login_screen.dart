@@ -107,9 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light.copyWith(
-        statusBarColor: Colors.transparent,
-      ),
+      value: SystemUiOverlayStyle.light,
       child: Scaffold(
         body: Stack(
           children: [
