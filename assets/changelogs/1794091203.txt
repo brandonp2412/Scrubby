@@ -1,0 +1,3 @@
+• build: preserve class names during release optimization
+• fix(android): simplify edge-to-edge system bar styles
+• style: apply compact slider theme across app
