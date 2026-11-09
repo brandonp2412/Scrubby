@@ -1217,9 +1217,18 @@ void main() {
                       'attributes': {'device_class': 'battery'},
                     },
                     {
+                      'entity_id': 'camera.test_map_1',
+                      'state': 'saved',
+                      'attributes': {
+                        'friendly_name': 'Test Vacuum Saved Map 1',
+                      },
+                    },
+                    {
                       'entity_id': 'camera.test_map',
                       'state': 'streaming',
-                      'attributes': {'friendly_name': 'Test Vacuum Map'},
+                      'attributes': {
+                        'friendly_name': 'Test Vacuum Current Map',
+                      },
                     },
                   ],
                 }),
@@ -1335,6 +1344,15 @@ void main() {
         [4],
       );
       expect(mapFetches, 4);
+      // If camera events stop mid-clean, a slower poll still advances the map.
+      final fallback = client.vacuumUpdates.firstWhere(
+        (vacuums) => vacuums.single.mapImage?.first == 5,
+      );
+      expect(
+        (await fallback.timeout(const Duration(seconds: 3))).single.mapImage,
+        [5],
+      );
+      expect(mapFetches, 5);
     },
   );
 

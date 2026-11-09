@@ -882,6 +882,12 @@ class HomeAssistantClient {
       _emitVacuumUpdate();
     }
     if (entityId.startsWith('vacuum.') &&
+        oldState?['state'] != 'cleaning' &&
+        newState is Map &&
+        newState['state'] == 'cleaning') {
+      refreshMaps();
+    }
+    if (entityId.startsWith('vacuum.') &&
         oldState?['state'] != (newState is Map ? newState['state'] : null) &&
         (oldState?['state'] == 'cleaning' ||
             oldState?['state'] == 'returning' ||
@@ -1015,8 +1021,18 @@ class HomeAssistantClient {
         timer.cancel();
         return;
       }
-      _scheduleAllMapRefreshes();
-      if (timer.tick >= mapCatchupAttempts) timer.cancel();
+      final isCleaning = _states.values.any(
+        (state) =>
+            (state['entity_id'] as String? ?? '').startsWith('vacuum.') &&
+            state['state'] == 'cleaning',
+      );
+      // Keep a slower safety-net poll while cleaning. Camera state-change
+      // events should normally supply frames, but they can be missed.
+      if (timer.tick <= mapCatchupAttempts ||
+          (isCleaning && timer.tick % 3 == 0)) {
+        _scheduleAllMapRefreshes();
+      }
+      if (timer.tick >= mapCatchupAttempts && !isCleaning) timer.cancel();
     });
   }
 
@@ -1470,10 +1486,23 @@ class HomeAssistantClient {
       return (id.startsWith('camera.') || id.startsWith('image.')) &&
           (searchable.contains('map') || searchable.contains('floor'));
     }).toList();
-    candidates.sort(
-      (a, b) =>
-          _entityMatchScore(b, vacuum).compareTo(_entityMatchScore(a, vacuum)),
-    );
+    final vacuumName = (vacuum['entity_id'] as String? ?? '').split('.').last;
+    candidates.sort((a, b) {
+      final score = _entityMatchScore(
+        b,
+        vacuum,
+      ).compareTo(_entityMatchScore(a, vacuum));
+      if (score != 0) return score;
+      // The numbered Dreame camera is a saved snapshot, not the live map.
+      final liveMap = 'camera.${vacuumName}_map';
+      final aId = a['entity_id'] as String;
+      final bId = b['entity_id'] as String;
+      if (aId == liveMap) return -1;
+      if (bId == liveMap) return 1;
+      final aSaved = aId.contains('_map_');
+      final bSaved = bId.contains('_map_');
+      return (aSaved ? 1 : 0).compareTo(bSaved ? 1 : 0);
+    });
     if (candidates.isEmpty) return null;
     if (candidates.length == 1 ||
         _entityMatchScore(candidates.first, vacuum) > 0) {
