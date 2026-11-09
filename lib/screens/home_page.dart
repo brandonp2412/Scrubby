@@ -664,7 +664,7 @@ class _HomeMapCardState extends State<_HomeMapCard> {
                 alignment: Alignment.center,
                 padding: const EdgeInsets.all(28),
                 child: const Text(
-                  'No map entity found',
+                  'Map currently unavailable',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: fern, fontWeight: FontWeight.w700),
                 ),

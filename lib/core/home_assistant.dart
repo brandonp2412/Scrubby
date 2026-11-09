@@ -580,26 +580,27 @@ class HomeAssistantClient {
     );
     final vacuums = <VacuumEntity>[];
     for (final state in vacuumStates) {
-      var vacuum = VacuumEntity.fromJson(state);
+      final vacuum = VacuumEntity.fromJson(state);
       final battery = vacuum.battery ?? _findBattery(state, states);
       final mapEntity = _findMapEntity(state, states);
       final mapEntityId = mapEntity?['entity_id'] as String?;
       if (mapEntityId != null) _mapEntityIds[vacuum.entityId] = mapEntityId;
-      final mapImage = mapEntity == null ? null : await _fetchMap(mapEntity);
-      if (mapImage != null) _mapImages[vacuum.entityId] = mapImage;
-      vacuum = VacuumEntity(
-        entityId: vacuum.entityId,
-        name: vacuum.name,
-        state: vacuum.state,
-        battery: battery,
-        fanSpeed: vacuum.fanSpeed,
-        fanSpeeds: vacuum.fanSpeeds,
-        mapImage: mapImage,
-        supportedFeatures: vacuum.supportedFeatures,
-        manufacturer: vacuum.manufacturer,
-        model: vacuum.model,
+      // Fetch camera images separately, after the dashboard is ready.
+      // A slow Dreame render must not hold up WebSocket state on cold start.
+      vacuums.add(
+        VacuumEntity(
+          entityId: vacuum.entityId,
+          name: vacuum.name,
+          state: vacuum.state,
+          battery: battery,
+          fanSpeed: vacuum.fanSpeed,
+          fanSpeeds: vacuum.fanSpeeds,
+          mapImage: _mapImages[vacuum.entityId],
+          supportedFeatures: vacuum.supportedFeatures,
+          manufacturer: vacuum.manufacturer,
+          model: vacuum.model,
+        ),
       );
-      vacuums.add(vacuum);
     }
     talker.info('Loaded ${vacuums.length} vacuum entities');
     return vacuums;

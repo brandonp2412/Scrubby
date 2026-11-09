@@ -331,12 +331,12 @@ class AppState extends ChangeNotifier {
       isDemo = false;
       savedUrl = client.baseUrl;
       restoreError = null;
-      await _loadVacuumSegments();
-      await refreshVacuumSettings();
+      // Show the vacuum state as soon as the WebSocket is ready.
+      // Maps, rooms, settings and schedules are optional for the first frame.
       notifyListeners();
       client.refreshMaps();
+      unawaited(_loadOptionalVacuumData(client));
       unawaited(_notificationPresenter.requestPermissions());
-      await refreshSchedules();
       if (!identical(_client, client)) return;
       talker.info(
         'Connected to Home Assistant with ${entities.length} vacuums',
@@ -345,6 +345,25 @@ class AppState extends ChangeNotifier {
       talker.handle(error, stackTrace, 'Home Assistant login failed');
       await client.close();
       rethrow;
+    }
+  }
+
+  Future<void> _loadOptionalVacuumData(HomeAssistantClient client) async {
+    try {
+      await _loadVacuumSegments();
+      if (!identical(_client, client)) return;
+      notifyListeners();
+      await refreshVacuumSettings();
+      if (!identical(_client, client)) return;
+      await refreshSchedules();
+    } catch (error, stackTrace) {
+      if (identical(_client, client)) {
+        talker.handle(
+          error,
+          stackTrace,
+          'Could not finish optional vacuum setup',
+        );
+      }
     }
   }
 

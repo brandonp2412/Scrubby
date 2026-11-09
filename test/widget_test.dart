@@ -1319,40 +1319,42 @@ void main() {
       final initial = await client.fetchVacuums();
       expect(initial.single.state, 'docked');
       expect(initial.single.battery, 81);
-      expect(initial.single.mapImage, [1]);
+      // Fetching vacuum states must never wait for an HTTP camera render.
+      expect(initial.single.mapImage, isNull);
+      expect(mapFetches, 0);
 
       final liveUpdate = client.vacuumUpdates.firstWhere(
         (vacuums) =>
             vacuums.single.state == 'cleaning' &&
-            vacuums.single.mapImage?.first == 2,
+            vacuums.single.mapImage?.first == 1,
       );
       final notification = client.notificationUpdates.first;
       sendEvent.complete();
       await eventSent.future;
       final updated = (await liveUpdate).single;
       expect(updated.state, 'cleaning');
-      expect(updated.mapImage, [2]);
+      expect(updated.mapImage, [1]);
       expect((await notification).body, 'Left wheel blocked');
 
-      // The camera can initially serve an old frame without another event.
+      // Camera refreshes happen independently of initial state fetch.
       final catchup = client.vacuumUpdates.firstWhere(
-        (vacuums) => vacuums.single.mapImage?.first == 4,
+        (vacuums) => vacuums.single.mapImage?.first == 3,
       );
       client.refreshMaps();
       expect(
         (await catchup.timeout(const Duration(seconds: 3))).single.mapImage,
-        [4],
+        [3],
       );
-      expect(mapFetches, 4);
+      expect(mapFetches, 3);
       // If camera events stop mid-clean, a slower poll still advances the map.
       final fallback = client.vacuumUpdates.firstWhere(
-        (vacuums) => vacuums.single.mapImage?.first == 5,
+        (vacuums) => vacuums.single.mapImage?.first == 4,
       );
       expect(
         (await fallback.timeout(const Duration(seconds: 3))).single.mapImage,
-        [5],
+        [4],
       );
-      expect(mapFetches, 5);
+      expect(mapFetches, 4);
     },
   );
 
