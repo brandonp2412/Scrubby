@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 # ABI migration: next release begins at build 500, above old split APK codes (up to 4029).
-version: 1.0.32+503
+version: 1.0.33+504
 
 environment:
   sdk: ^3.12.2

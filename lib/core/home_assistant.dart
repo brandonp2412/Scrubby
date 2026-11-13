@@ -490,7 +490,7 @@ class HomeAssistantClient {
     this.token, {
     http.Client? httpClient,
     this.notificationOnly = false,
-    this.mapCatchupInterval = const Duration(seconds: 5),
+    this.mapCatchupInterval = const Duration(seconds: 3),
     this.mapCatchupAttempts = 8,
     this.heartbeatInterval = const Duration(minutes: 2),
     this.heartbeatTimeout = const Duration(seconds: 15),
@@ -531,6 +531,7 @@ class HomeAssistantClient {
   final Map<String, Uint8List> _mapImages = {};
   final Map<String, String> _mapEntityIds = {};
   final Map<String, Timer> _mapRefreshTimers = {};
+  final Set<String> _mapFetchesInFlight = {};
   final Map<String, int> _mapRefreshVersions = {};
   final Map<String, int> _mapAppliedVersions = {};
   Timer? _mapCatchupTimer;
@@ -1027,10 +1028,9 @@ class HomeAssistantClient {
             (state['entity_id'] as String? ?? '').startsWith('vacuum.') &&
             state['state'] == 'cleaning',
       );
-      // Keep a slower safety-net poll while cleaning. Camera state-change
-      // events should normally supply frames, but they can be missed.
-      if (timer.tick <= mapCatchupAttempts ||
-          (isCleaning && timer.tick % 3 == 0)) {
+      // Camera events are not guaranteed for every new Dreame frame, so
+      // continue polling during cleaning without overlapping downloads.
+      if (timer.tick <= mapCatchupAttempts || isCleaning) {
         _scheduleAllMapRefreshes();
       }
       if (timer.tick >= mapCatchupAttempts && !isCleaning) timer.cancel();
@@ -1059,40 +1059,55 @@ class HomeAssistantClient {
   }
 
   void _scheduleMapRefresh(String vacuumId) {
-    _mapRefreshTimers[vacuumId]?.cancel();
     final version = (_mapRefreshVersions[vacuumId] ?? 0) + 1;
     _mapRefreshVersions[vacuumId] = version;
-    _mapRefreshTimers[vacuumId] = Timer(
-      const Duration(milliseconds: 350),
-      () => _refreshMap(vacuumId, version),
-    );
+    // Use a leading-edge timer: resetting a debounce on every camera event
+    // starves image downloads while the camera updates rapidly.
+    if (_mapRefreshTimers[vacuumId]?.isActive == true ||
+        _mapFetchesInFlight.contains(vacuumId)) {
+      return;
+    }
+    _mapRefreshTimers[vacuumId] = Timer(const Duration(milliseconds: 100), () {
+      _mapRefreshTimers.remove(vacuumId);
+      unawaited(_refreshMap(vacuumId, _mapRefreshVersions[vacuumId]!));
+    });
   }
 
   Future<void> _refreshMap(String vacuumId, int version) async {
-    if (_closed || _suspended) return;
-    final states = _states.values.toList(growable: false);
-    final vacuumState = _states[vacuumId];
-    if (vacuumState == null) return;
-    final mapEntity = _findMapEntity(vacuumState, states);
-    if (mapEntity == null) {
-      _mapEntityIds.remove(vacuumId);
-      if (_mapImages.remove(vacuumId) != null) _emitVacuumUpdate();
-      return;
+    if (_closed || _suspended || !_mapFetchesInFlight.add(vacuumId)) return;
+    try {
+      final states = _states.values.toList(growable: false);
+      final vacuumState = _states[vacuumId];
+      if (vacuumState == null) return;
+      final mapEntity = _findMapEntity(vacuumState, states);
+      if (mapEntity == null) {
+        _mapEntityIds.remove(vacuumId);
+        if (_mapImages.remove(vacuumId) != null) _emitVacuumUpdate();
+        return;
+      }
+      final mapEntityId = mapEntity['entity_id'] as String;
+      _mapEntityIds[vacuumId] = mapEntityId;
+      final image = await _fetchMap(mapEntity, avoidCache: true);
+      if (_closed ||
+          _suspended ||
+          _mapEntityIds[vacuumId] != mapEntityId ||
+          (_mapAppliedVersions[vacuumId] ?? 0) > version ||
+          image == null) {
+        return;
+      }
+      _mapAppliedVersions[vacuumId] = version;
+      if (listEquals(_mapImages[vacuumId], image)) return;
+      _mapImages[vacuumId] = image;
+      _emitVacuumUpdate();
+    } finally {
+      _mapFetchesInFlight.remove(vacuumId);
+      // If updates arrived during the download, fetch the newest frame next.
+      if (!_closed &&
+          !_suspended &&
+          (_mapRefreshVersions[vacuumId] ?? 0) > version) {
+        _scheduleMapRefresh(vacuumId);
+      }
     }
-    final mapEntityId = mapEntity['entity_id'] as String;
-    _mapEntityIds[vacuumId] = mapEntityId;
-    final image = await _fetchMap(mapEntity, avoidCache: true);
-    if (_closed ||
-        _suspended ||
-        _mapEntityIds[vacuumId] != mapEntityId ||
-        (_mapAppliedVersions[vacuumId] ?? 0) > version ||
-        image == null) {
-      return;
-    }
-    _mapAppliedVersions[vacuumId] = version;
-    if (listEquals(_mapImages[vacuumId], image)) return;
-    _mapImages[vacuumId] = image;
-    _emitVacuumUpdate();
   }
 
   void _handleDisconnect(int generation) {
