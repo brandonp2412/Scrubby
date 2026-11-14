@@ -8,6 +8,10 @@
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
+  errors:
+    analysis_options_deprecated_plugins: ignore
+  plugins:
+    - custom_lint
   exclude:
     - build/**
     - android/**
@@ -34,3 +38,7 @@ linter:
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options
+
+custom_lint:
+  rules:
+    - no_nested_ternaries

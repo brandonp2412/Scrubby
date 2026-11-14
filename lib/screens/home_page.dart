@@ -133,11 +133,10 @@ class HomePage extends StatelessWidget {
 
   String _greeting() {
     final hour = DateTime.now().hour;
-    return hour < 12
-        ? 'Good morning.'
-        : hour < 18
-        ? 'Good afternoon.'
-        : 'Good evening.';
+    return switch (hour < 12) {
+      true => 'Good morning.',
+      false => hour < 18 ? 'Good afternoon.' : 'Good evening.',
+    };
   }
 
   void _openHistory(
@@ -273,11 +272,11 @@ class _ControlHero extends StatelessWidget {
               Center(
                 child: Semantics(
                   button: true,
-                  label: vacuum.isCleaning
-                      ? 'Pause cleaning'
-                      : vacuum.isPaused
-                      ? 'Resume cleaning'
-                      : 'Start cleaning',
+                  label: switch (vacuum.isCleaning) {
+                    true => 'Pause cleaning',
+                    false =>
+                      vacuum.isPaused ? 'Resume cleaning' : 'Start cleaning',
+                  },
                   child: InkWell(
                     onTap: state.isBusy
                         ? null
@@ -301,38 +300,38 @@ class _ControlHero extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: state.isBusy
-                            ? const Padding(
-                                padding: EdgeInsets.all(70),
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 3,
+                        child: switch (state.isBusy) {
+                          true => const Padding(
+                            padding: EdgeInsets.all(70),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              color: ink,
+                            ),
+                          ),
+                          false => Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                vacuum.isCleaning
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                size: 55,
+                                color: ink,
+                              ),
+                              Text(
+                                switch (vacuum.isCleaning) {
+                                  true => 'PAUSE',
+                                  false => vacuum.isPaused ? 'RESUME' : 'START',
+                                },
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.5,
                                   color: ink,
                                 ),
-                              )
-                            : Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    vacuum.isCleaning
-                                        ? Icons.pause_rounded
-                                        : Icons.play_arrow_rounded,
-                                    size: 55,
-                                    color: ink,
-                                  ),
-                                  Text(
-                                    vacuum.isCleaning
-                                        ? 'PAUSE'
-                                        : vacuum.isPaused
-                                        ? 'RESUME'
-                                        : 'START',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.5,
-                                      color: ink,
-                                    ),
-                                  ),
-                                ],
                               ),
+                            ],
+                          ),
+                        },
                       ),
                     ),
                   ),
@@ -658,126 +657,126 @@ class _HomeMapCardState extends State<_HomeMapCard> {
       padding: EdgeInsets.zero,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: map == null
-            ? Container(
-                color: const Color(0xFFE2EADF),
-                alignment: Alignment.center,
-                padding: const EdgeInsets.all(28),
-                child: const Text(
-                  'Map currently unavailable',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: fern, fontWeight: FontWeight.w700),
-                ),
-              )
-            : ColoredBox(
-                color: Colors.black,
-                child: widget.fullScreen
-                    ? Stack(
-                        children: [
-                          Positioned.fill(
-                            child: InteractiveViewer(
-                              transformationController: _transformation,
-                              minScale: 1,
-                              maxScale: 5,
-                              child: Image.memory(
-                                map,
-                                fit: BoxFit.contain,
-                                filterQuality: FilterQuality.high,
-                                gaplessPlayback: true,
-                              ),
-                            ),
+        child: switch (map == null) {
+          true => Container(
+            color: const Color(0xFFE2EADF),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.all(28),
+            child: const Text(
+              'Map currently unavailable',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: fern, fontWeight: FontWeight.w700),
+            ),
+          ),
+          false => ColoredBox(
+            color: Colors.black,
+            child: widget.fullScreen
+                ? Stack(
+                    children: [
+                      Positioned.fill(
+                        child: InteractiveViewer(
+                          transformationController: _transformation,
+                          minScale: 1,
+                          maxScale: 5,
+                          child: Image.memory(
+                            map!,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.high,
+                            gaplessPlayback: true,
                           ),
-                          if (_canAddLabel)
-                            Positioned(
-                              right: 12,
-                              top: 12,
-                              child: FloatingActionButton.small(
-                                heroTag: 'home-map-label',
-                                tooltip: 'Name a room',
-                                backgroundColor: Colors.white,
-                                foregroundColor: ink,
-                                onPressed: _addLabel,
-                                child: const Icon(Icons.label_outline_rounded),
-                              ),
-                            ),
-                          Positioned(
-                            right: 12,
-                            top: 68,
-                            child: Column(
-                              children: [
-                                FloatingActionButton.small(
-                                  heroTag: 'home-map-plus',
-                                  tooltip: 'Zoom in',
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: ink,
-                                  onPressed: () => _zoom(1.35),
-                                  child: const Icon(Icons.add),
-                                ),
-                                const SizedBox(height: 6),
-                                FloatingActionButton.small(
-                                  heroTag: 'home-map-minus',
-                                  tooltip: 'Zoom out',
-                                  backgroundColor: Colors.white,
-                                  foregroundColor: ink,
-                                  onPressed: () => _zoom(1 / 1.35),
-                                  child: const Icon(Icons.remove),
-                                ),
-                              ],
-                            ),
+                        ),
+                      ),
+                      if (_canAddLabel)
+                        Positioned(
+                          right: 12,
+                          top: 12,
+                          child: FloatingActionButton.small(
+                            heroTag: 'home-map-label',
+                            tooltip: 'Name a room',
+                            backgroundColor: Colors.white,
+                            foregroundColor: ink,
+                            onPressed: _addLabel,
+                            child: const Icon(Icons.label_outline_rounded),
                           ),
-                        ],
-                      )
-                    : Image.memory(
-                        map,
-                        fit: BoxFit.contain,
-                        filterQuality: FilterQuality.high,
-                        gaplessPlayback: true,
-                      ),
-              ),
-      ),
-    );
-    final roomKey = widget.state.mapRoomLabels.isEmpty
-        ? const SizedBox.shrink()
-        : Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-            color: Colors.white.withValues(alpha: .82),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final label in widget.state.mapRoomLabels)
-                  GestureDetector(
-                    onTap: widget.fullScreen ? () => _renameLabel(label) : null,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: cream,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: ink.withValues(alpha: .1)),
-                      ),
-                      child: Text.rich(
-                        TextSpan(
+                        ),
+                      Positioned(
+                        right: 12,
+                        top: 68,
+                        child: Column(
                           children: [
-                            TextSpan(
-                              text: '${_segmentName(label)}  ',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w900,
-                              ),
+                            FloatingActionButton.small(
+                              heroTag: 'home-map-plus',
+                              tooltip: 'Zoom in',
+                              backgroundColor: Colors.white,
+                              foregroundColor: ink,
+                              onPressed: () => _zoom(1.35),
+                              child: const Icon(Icons.add),
                             ),
-                            TextSpan(text: label.name),
-                            if (widget.fullScreen) const TextSpan(text: '  ✎'),
+                            const SizedBox(height: 6),
+                            FloatingActionButton.small(
+                              heroTag: 'home-map-minus',
+                              tooltip: 'Zoom out',
+                              backgroundColor: Colors.white,
+                              foregroundColor: ink,
+                              onPressed: () => _zoom(1 / 1.35),
+                              child: const Icon(Icons.remove),
+                            ),
                           ],
                         ),
                       ),
+                    ],
+                  )
+                : Image.memory(
+                    map!,
+                    fit: BoxFit.contain,
+                    filterQuality: FilterQuality.high,
+                    gaplessPlayback: true,
+                  ),
+          ),
+        },
+      ),
+    );
+    final roomKey = switch (widget.state.mapRoomLabels.isEmpty) {
+      true => const SizedBox.shrink(),
+      false => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        color: Colors.white.withValues(alpha: .82),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final label in widget.state.mapRoomLabels)
+              GestureDetector(
+                onTap: widget.fullScreen ? () => _renameLabel(label) : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: cream,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: ink.withValues(alpha: .1)),
+                  ),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '${_segmentName(label)}  ',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        TextSpan(text: label.name),
+                        if (widget.fullScreen) const TextSpan(text: '  ✎'),
+                      ],
                     ),
                   ),
-              ],
-            ),
-          );
+                ),
+              ),
+          ],
+        ),
+      ),
+    };
     if (widget.fullScreen) {
       return SafeArea(
         top: false,

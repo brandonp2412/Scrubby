@@ -13,6 +13,7 @@ dart format --output=none --set-exit-if-changed lib test integration_test test_d
 
 echo "== analyzing =="
 flutter analyze
+dart run custom_lint
 
 echo "== testing =="
 flutter test

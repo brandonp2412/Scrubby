@@ -61,11 +61,13 @@ class _ScrubbyAppState extends State<ScrubbyApp> {
         listenable: state,
         builder: (context, _) => AnimatedSwitcher(
           duration: const Duration(milliseconds: 420),
-          child: !state.isInitialized
-              ? const _StartupScreen(key: ValueKey('startup'))
-              : state.vacuums.isEmpty
-              ? LoginScreen(key: const ValueKey('login'), state: state)
-              : DashboardShell(key: const ValueKey('home'), state: state),
+          child: switch (!state.isInitialized) {
+            true => const _StartupScreen(key: ValueKey('startup')),
+            false =>
+              state.vacuums.isEmpty
+                  ? LoginScreen(key: const ValueKey('login'), state: state)
+                  : DashboardShell(key: const ValueKey('home'), state: state),
+          },
         ),
       ),
     );

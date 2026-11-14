@@ -87,11 +87,13 @@ class _RoomsPageState extends State<RoomsPage> {
     final powerModes = widget.state.vacuum.fanSpeeds.isEmpty
         ? const ['Quiet', 'Balanced', 'Turbo']
         : widget.state.vacuum.fanSpeeds;
-    final selectedPowerMode = powerModes.contains(mode)
-        ? mode
-        : powerModes.contains(widget.state.vacuum.fanSpeed)
-        ? widget.state.vacuum.fanSpeed
-        : powerModes.first;
+    final selectedPowerMode = switch (powerModes.contains(mode)) {
+      true => mode,
+      false =>
+        powerModes.contains(widget.state.vacuum.fanSpeed)
+            ? widget.state.vacuum.fanSpeed
+            : powerModes.first,
+    };
     final cleaningModeSetting = _cleaningModeSetting;
     final labelsBySegment = {
       for (final label in widget.state.mapRoomLabels) label.segmentId: label,
@@ -141,14 +143,15 @@ class _RoomsPageState extends State<RoomsPage> {
                           selected: activeSelection.contains(rooms[index].id),
                           linked: rooms[index].segmentId != null,
                           labelled: rooms[index].isLabelled,
-                          onTap: rooms[index].segmentId == null
-                              ? null
-                              : () => setState(() {
-                                  final id = rooms[index].id;
-                                  selected.contains(id)
-                                      ? selected.remove(id)
-                                      : selected.add(id);
-                                }),
+                          onTap: switch (rooms[index].segmentId == null) {
+                            true => null,
+                            false => () => setState(() {
+                              final id = rooms[index].id;
+                              selected.contains(id)
+                                  ? selected.remove(id)
+                                  : selected.add(id);
+                            }),
+                          },
                         ),
                       ),
                   ],
@@ -235,11 +238,11 @@ class _RoomsPageState extends State<RoomsPage> {
                 ),
               ),
               icon: const Icon(Icons.play_arrow_rounded),
-              label: Text(
-                activeSelection.isEmpty
-                    ? 'Choose at least one room'
-                    : 'Clean ${activeSelection.length} ${activeSelection.length == 1 ? 'room' : 'rooms'}',
-              ),
+              label: Text(switch (activeSelection.isEmpty) {
+                true => 'Choose at least one room',
+                false =>
+                  'Clean ${activeSelection.length} ${activeSelection.length == 1 ? 'room' : 'rooms'}',
+              }),
             ),
           ),
         ],
@@ -256,11 +259,15 @@ class _RoomsPageState extends State<RoomsPage> {
         .toList(growable: false);
     try {
       final supportedPower = widget.state.vacuum.fanSpeeds;
-      final selectedPower = supportedPower.contains(mode)
-          ? mode!
-          : supportedPower.contains(widget.state.vacuum.fanSpeed)
-          ? widget.state.vacuum.fanSpeed!
-          : (supportedPower.isEmpty ? 'Balanced' : supportedPower.first);
+      final selectedPower = switch (supportedPower.contains(mode)) {
+        true => mode!,
+        false => switch (supportedPower.contains(
+          widget.state.vacuum.fanSpeed,
+        )) {
+          true => widget.state.vacuum.fanSpeed!,
+          false => (supportedPower.isEmpty ? 'Balanced' : supportedPower.first),
+        },
+      };
       final cleaningModeSetting = _cleaningModeSetting;
       final selectedCleaningMode = _effectiveCleaningMode;
       if (cleaningModeSetting != null && selectedCleaningMode != null) {
@@ -370,14 +377,13 @@ class _RoomCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(name, style: Theme.of(context).textTheme.titleLarge),
-                    Text(
-                      linked
-                          ? labelled
-                                ? 'Mapped room'
-                                : 'Vacuum room · label it on the map'
-                          : 'Not linked to a vacuum room',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
+                    Text(switch (linked) {
+                      true =>
+                        labelled
+                            ? 'Mapped room'
+                            : 'Vacuum room · label it on the map',
+                      false => 'Not linked to a vacuum room',
+                    }, style: Theme.of(context).textTheme.bodyMedium),
                   ],
                 ),
               ),

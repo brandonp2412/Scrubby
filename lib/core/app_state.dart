@@ -749,11 +749,11 @@ class AppState extends ChangeNotifier {
             settings?.indexWhere((item) => item.entityId == setting.entityId) ??
             -1;
         if (settings != null && index >= 0) {
-          settings[index] = setting.copyWithValue(
-            setting.kind == VacuumSettingKind.toggle
-                ? (value == true ? 'on' : 'off')
-                : value.toString(),
-          );
+          settings[index] = setting.copyWithValue(switch (setting.kind ==
+              VacuumSettingKind.toggle) {
+            true => (value == true ? 'on' : 'off'),
+            false => value.toString(),
+          });
         }
       }
     } finally {

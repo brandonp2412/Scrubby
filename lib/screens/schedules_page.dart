@@ -839,9 +839,10 @@ class _ScheduleSettingField extends StatelessWidget {
             value: choice,
             child: OptionLabel(
               value: choice,
-              label: setting.kind == VacuumSettingKind.toggle
-                  ? (choice == 'on' ? 'On' : 'Off')
-                  : (valueLabel?.call(choice) ?? choice),
+              label: switch (setting.kind == VacuumSettingKind.toggle) {
+                true => (choice == 'on' ? 'On' : 'Off'),
+                false => (valueLabel?.call(choice) ?? choice),
+              },
               field: setting.name,
             ),
           ),
