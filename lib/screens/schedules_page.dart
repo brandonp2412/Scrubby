@@ -275,24 +275,6 @@ class _ScheduleCard extends StatelessWidget {
                                 '$roomSummary · $vacuumName',
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
-                              if (schedule.fanSpeed != null ||
-                                  schedule.settings.isNotEmpty) ...[
-                                const SizedBox(height: 5),
-                                Text(
-                                  [
-                                    if (schedule.fanSpeed != null)
-                                      schedule.fanSpeed!,
-                                    ...schedule.settings.map(
-                                      (item) => item.value,
-                                    ),
-                                    if (schedule.cycles > 1)
-                                      '${schedule.cycles} cycles',
-                                  ].join(' · '),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              ],
                             ],
                           ),
                         ),
